@@ -23,6 +23,7 @@
     "test:webhook:pr-comment": "node dev/test-webhook.js prCommentCreated",
     "test:real": "node dev/test-real-github.js",
     "import": "node dev/bulk-import.js",
+    "configure-repo": "node dev/setup-repo.js",
     "logs": "wrangler tail"
   },
   "dependencies": {
