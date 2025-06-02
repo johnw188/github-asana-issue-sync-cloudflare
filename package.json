@@ -1,0 +1,29 @@
+{
+  "name": "github-asana-issue-sync-cloudflare",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker to sync GitHub issues to Asana tasks via webhooks",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev --local --port 8787",
+    "dev:remote": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:webhook": "node test-webhook.js",
+    "test:webhook:opened": "node test-webhook.js issueOpened",
+    "test:webhook:edited": "node test-webhook.js issueEdited",
+    "test:webhook:closed": "node test-webhook.js issueClosed",
+    "test:webhook:reopened": "node test-webhook.js issueReopened",
+    "test:webhook:comment": "node test-webhook.js commentCreated",
+    "logs": "wrangler tail"
+  },
+  "dependencies": {
+    "asana": "^3.0.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241106.0",
+    "wrangler": "^3.78.12",
+    "vitest": "^2.1.3"
+  }
+}
