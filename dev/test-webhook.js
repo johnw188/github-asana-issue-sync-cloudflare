@@ -16,6 +16,18 @@ const baseIssue = {
   created_at: timestamp
 };
 
+const basePullRequest = {
+  html_url: `https://github.com/test/repo/pull/${issueNumber}`,
+  title: `Test Pull Request #${issueNumber}`,
+  body: `This is a test pull request created at ${timestamp}`,
+  number: issueNumber,
+  user: { 
+    login: "testuser",
+    html_url: "https://github.com/testuser"
+  },
+  created_at: timestamp
+};
+
 const baseRepository = {
   name: "test-repo",
   owner: { login: "test-owner" }
@@ -63,6 +75,49 @@ const testPayloads = {
       },
       created_at: new Date().toISOString()
     }
+  },
+  
+  prOpened: {
+    action: "opened",
+    pull_request: basePullRequest,
+    repository: baseRepository
+  },
+  
+  prEdited: {
+    action: "edited",
+    pull_request: {
+      ...basePullRequest,
+      title: "Updated Test Pull Request",
+      body: "This is an updated test pull request with more details"
+    },
+    repository: baseRepository
+  },
+  
+  prClosed: {
+    action: "closed",
+    pull_request: basePullRequest,
+    repository: baseRepository
+  },
+  
+  prReopened: {
+    action: "reopened",
+    pull_request: basePullRequest,
+    repository: baseRepository
+  },
+  
+  prCommentCreated: {
+    action: "created",
+    pull_request: basePullRequest,
+    repository: baseRepository,
+    comment: {
+      html_url: `https://github.com/test/repo/pull/${issueNumber}#discussion_r${issueNumber}999`,
+      body: "This is a test review comment on the pull request",
+      user: {
+        login: "reviewer",
+        html_url: "https://github.com/reviewer"
+      },
+      created_at: new Date().toISOString()
+    }
   }
 };
 
@@ -97,8 +152,9 @@ async function testWebhookEvent(eventName, payload, githubEvent = 'issues') {
 }
 
 async function runAllTests() {
-  console.log(`🚀 Running all webhook tests for issue #${issueNumber}...\n`);
+  console.log(`🚀 Running all webhook tests for issue/PR #${issueNumber}...\n`);
   
+  console.log('📋 ISSUE TESTS');
   // Test 1: Issue Opened
   await testWebhookEvent('Issue Opened', testPayloads.issueOpened, 'issues');
   
@@ -114,13 +170,38 @@ async function runAllTests() {
   // Test 5: Comment Created
   await testWebhookEvent('Comment Created', testPayloads.commentCreated, 'issue_comment');
   
+  console.log('\n🔀 PULL REQUEST TESTS');
+  // Test 6: PR Opened
+  await testWebhookEvent('PR Opened', testPayloads.prOpened, 'pull_request');
+  
+  // Test 7: PR Edited
+  await testWebhookEvent('PR Edited', testPayloads.prEdited, 'pull_request');
+  
+  // Test 8: PR Closed
+  await testWebhookEvent('PR Closed', testPayloads.prClosed, 'pull_request');
+  
+  // Test 9: PR Reopened
+  await testWebhookEvent('PR Reopened', testPayloads.prReopened, 'pull_request');
+  
+  // Test 10: PR Comment Created
+  await testWebhookEvent('PR Comment Created', testPayloads.prCommentCreated, 'pull_request_review_comment');
+  
   console.log('\n🎉 All tests completed!');
 }
 
 // Run individual test or all tests
 const testName = process.argv[2];
 if (testName && testPayloads[testName]) {
-  const eventType = testName === 'commentCreated' ? 'issue_comment' : 'issues';
+  let eventType = 'issues';
+  if (testName === 'commentCreated') {
+    eventType = 'issue_comment';
+  } else if (testName.startsWith('pr')) {
+    if (testName === 'prCommentCreated') {
+      eventType = 'pull_request_review_comment';
+    } else {
+      eventType = 'pull_request';
+    }
+  }
   testWebhookEvent(testName, testPayloads[testName], eventType);
 } else {
   runAllTests().catch(console.error);

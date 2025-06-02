@@ -16,6 +16,12 @@
     "test:webhook:closed": "node dev/test-webhook.js issueClosed",
     "test:webhook:reopened": "node dev/test-webhook.js issueReopened",
     "test:webhook:comment": "node dev/test-webhook.js commentCreated",
+    "test:webhook:pr-opened": "node dev/test-webhook.js prOpened",
+    "test:webhook:pr-edited": "node dev/test-webhook.js prEdited",
+    "test:webhook:pr-closed": "node dev/test-webhook.js prClosed",
+    "test:webhook:pr-reopened": "node dev/test-webhook.js prReopened",
+    "test:webhook:pr-comment": "node dev/test-webhook.js prCommentCreated",
+    "test:real": "node dev/test-real-github.js",
     "logs": "wrangler tail"
   },
   "dependencies": {

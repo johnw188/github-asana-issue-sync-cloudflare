@@ -37,9 +37,19 @@ export class WebhookHandler {
       return await this.issueSync.handleIssueEvent(payload);
     }
     
+    // Handle pull request events
+    if (eventType === 'pull_request') {
+      return await this.issueSync.handlePullRequestEvent(payload);
+    }
+    
     // Handle issue comments
     if (eventType === 'issue_comment' && action === 'created') {
       return await this.issueSync.handleCommentEvent(payload);
+    }
+    
+    // Handle pull request review comments
+    if (eventType === 'pull_request_review_comment' && action === 'created') {
+      return await this.issueSync.handlePullRequestCommentEvent(payload);
     }
     
     // Return success for unhandled events

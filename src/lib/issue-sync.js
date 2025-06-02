@@ -129,4 +129,122 @@ export class IssueSync {
     
     return { status: 'processed', action: 'comment_created', result };
   }
+  
+  async handlePullRequestEvent(payload) {
+    const { action } = payload;
+    const prUrl = payload.pull_request?.html_url;
+    
+    if (!prUrl) {
+      throw new Error("Unable to find GitHub pull request URL");
+    }
+    
+    let result;
+    
+    if (action === "opened") {
+      const taskContent = await issueToTask(payload, this.env, 'pull_request');
+      const repository = payload.repository.name;
+      const creator = payload.pull_request.user.login;
+      const githubUrl = payload.pull_request.html_url;
+      
+      result = await createTask(
+        this.asanaAPI,
+        taskContent,
+        this.projectId,
+        repository,
+        creator,
+        githubUrl,
+        this.env,
+        'PR'
+      );
+    } else if (action === "edited") {
+      const theTask = await findTaskContaining(this.asanaAPI, prUrl, this.projectId, this.env);
+      
+      if (!theTask) {
+        // Task was deleted, recreate it
+        const taskContent = await issueToTask(payload, this.env, 'pull_request');
+        const repository = payload.repository.name;
+        const creator = payload.pull_request.user.login;
+        const githubUrl = payload.pull_request.html_url;
+        
+        result = await createTask(
+          this.asanaAPI,
+          taskContent,
+          this.projectId,
+          repository,
+          creator,
+          githubUrl,
+          this.env,
+          'PR'
+        );
+      } else {
+        const taskContent = await issueToTask(payload, this.env, 'pull_request');
+        result = await updateTaskDescription(this.asanaAPI, theTask.gid, taskContent);
+      }
+    } else if (action === "closed" || action === "reopened") {
+      const theTask = await findTaskContaining(this.asanaAPI, prUrl, this.projectId, this.env);
+      
+      if (!theTask) {
+        // Task was deleted, recreate it and then mark its status
+        const taskContent = await issueToTask(payload, this.env, 'pull_request');
+        const repository = payload.repository.name;
+        const creator = payload.pull_request.user.login;
+        const githubUrl = payload.pull_request.html_url;
+        
+        const newTask = await createTask(
+          this.asanaAPI,
+          taskContent,
+          this.projectId,
+          repository,
+          creator,
+          githubUrl,
+          this.env,
+          'PR'
+        );
+        
+        const completed = action === "closed";
+        result = await markTaskComplete(this.asanaAPI, completed, newTask.gid);
+      } else {
+        const completed = action === "closed";
+        result = await markTaskComplete(this.asanaAPI, completed, theTask.gid);
+      }
+    }
+    
+    return { status: 'processed', action, result };
+  }
+  
+  async handlePullRequestCommentEvent(payload) {
+    const prUrl = payload.pull_request?.html_url;
+    
+    if (!prUrl) {
+      throw new Error("Unable to find GitHub pull request URL");
+    }
+    
+    const theTask = await findTaskContaining(this.asanaAPI, prUrl, this.projectId, this.env);
+    let result;
+    
+    if (!theTask) {
+      // Task was deleted, recreate it with full conversation
+      const taskContent = await issueToTask(payload, this.env, 'pull_request');
+      const repository = payload.repository.name;
+      const creator = payload.pull_request.user.login;
+      const githubUrl = payload.pull_request.html_url;
+      
+      result = await createTask(
+        this.asanaAPI,
+        taskContent,
+        this.projectId,
+        repository,
+        creator,
+        githubUrl,
+        this.env,
+        'PR'
+      );
+    } else {
+      // Update task description to include the new comment
+      const taskContent = await issueToTask(payload, this.env, 'pull_request');
+      result = await updateTaskDescription(this.asanaAPI, theTask.gid, taskContent);
+    }
+    
+    return { status: 'processed', action: 'pr_comment_created', result };
+  }
 }

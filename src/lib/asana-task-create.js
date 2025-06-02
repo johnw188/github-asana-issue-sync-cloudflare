@@ -1,11 +1,12 @@
 // Create Asana tasks from GitHub issues
 import { getCustomFieldForProject } from "./util/custom-field-helper.js";
 
-export async function createTask(asanaAPI, content, projectId, repository, creator, githubUrl, env) {
+export async function createTask(asanaAPI, content, projectId, repository, creator, githubUrl, env, type = 'Issue') {
   // Get custom field IDs from environment
   const repositoryFieldGid = env.REPOSITORY_FIELD_ID;
   const creatorFieldGid = env.CREATOR_FIELD_ID;
   const githubUrlFieldGid = env.GITHUB_URL_FIELD_ID;
+  const issueTypeFieldGid = env.ISSUE_TYPE_FIELD_ID;
   
   let customFields = {};
   
@@ -29,6 +30,18 @@ export async function createTask(asanaAPI, content, projectId, repository, creat
   // Add GitHub URL field if configured
   if (githubUrlFieldGid && githubUrl) {
     customFields[githubUrlFieldGid] = githubUrl;
+  }
+  
+  // Add Issue Type field if configured
+  if (issueTypeFieldGid && type) {
+    try {
+      const optionGid = await getCustomFieldForProject(asanaAPI, issueTypeFieldGid, type);
+      if (optionGid) {
+        customFields[issueTypeFieldGid] = optionGid;
+      }
+    } catch (error) {
+      console.error('Error with issue type custom field:', error.message);
+    }
   }
   
   // Only add custom_fields if we have any
