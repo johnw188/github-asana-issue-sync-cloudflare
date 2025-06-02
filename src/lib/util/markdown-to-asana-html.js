@@ -1,46 +1,50 @@
-// Simplified markdown to HTML conversion for Cloudflare Workers
-// Since micromark may not work in Workers environment, we'll use a basic implementation
+// @ts-check
 
+import { micromark } from "micromark";
+import { gfm, gfmHtml } from "micromark-extension-gfm";
+
+/**
+ * HTML in Asana is extremely limited. If a rich text string contains any <p> or <br> tags,
+ * the request will fail.
+ *
+ * Only H1 and H2 tags are supported, so we map h1-h3 => h1 and h4-h6 => h2
+ *
+ * @link https://forum.asana.com/t/changes-are-coming-to-rich-text-html-notes-and-html-text-in-asana/113434/9
+ *
+ * @param {string} rawMd Markdown source
+ * @returns {string} Rendered HTML string, with Asana-unsafe tags removed
+ */
 export function renderMarkdown(rawMd) {
-  // Basic markdown to HTML conversion
-  let html = rawMd
-    // Headers
-    .replace(/^### (.*$)/gim, '<h2>$1</h2>')
-    .replace(/^## (.*$)/gim, '<h1>$1</h1>')
-    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-    
-    // Bold
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/__(.*?)__/g, '<strong>$1</strong>')
-    
-    // Italic
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/_(.*?)_/g, '<em>$1</em>')
-    
-    // Links
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
-    
-    // Code blocks (simplified)
-    .replace(/```([^`]+)```/g, '<pre>$1</pre>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    
-    // Horizontal rules
-    .replace(/^---$/gim, '<hr>')
-    .replace(/^<hr>$/gim, '<hr>')
-    
-    // Line breaks
-    .replace(/\n\n/g, '\n')
-    .replace(/\n/g, '<br>');
+  const rendered = micromark(rawMd, {
+    allowDangerousHtml: true,
+    extensions: [gfm()],
+    htmlExtensions: [gfmHtml()],
+  });
 
-  // Clean up for Asana compatibility
-  const cleaned = html
+  const cleaned = rendered
     .replace(/<\/p>\s*/g, "\n\n")
     .replace(/<br>\s*/g, "\n")
     .replace(/<p>/g, "")
     .replace(/<(\/?)h[123]>\s*/g, "<$1h1>")
     .replace(/<(\/?)h[456]>\s*/g, "<$1h2>")
-    .replace(/href="((?!https?:\/\/)[^"]+)"/g, 'href="https://$1"')
+    .replace(/<input\s+type="checkbox"\s+disabled=""\s+checked=""\s*\/>/g, "[x]") // Replace checked checkboxes
+    .replace(/<input\s+type="checkbox"\s+disabled=""\s*\/>/g, "[ ]") // Replace unchecked checkboxes
+    .replace(/href="((?!https?:\/\/)[^"]+)"/g, 'href="https://$1"') // Add https:// to links without protocol
+    // Convert <pre><code> to just <pre> (Asana doesn't support nested code in pre)
+    .replace(/<pre><code[^>]*>([\s\S]*?)<\/code><\/pre>/g, (match, code) => {
+      // Remove trailing newline if present
+      const trimmedCode = code.replace(/\n$/, '');
+      return `<pre>${trimmedCode}</pre>`;
+    })
+    // Clean up extra newlines inside blockquotes
+    .replace(/<blockquote>\n/g, '<blockquote>')
+    .replace(/\n<\/blockquote>/g, '</blockquote>')
     .trim();
 
-  return `<body>${cleaned}</body>`;
+  // Final cleanup pass
+  const final = `<body>${cleaned}</body>`
+    // Remove newlines after <hr> tags
+    .replace(/<hr>\n+/g, '<hr>');
+
+  return final;
 }

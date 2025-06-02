@@ -1,8 +1,11 @@
 // Convert GitHub Issue to Asana Task format
 import { renderMarkdown } from "./markdown-to-asana-html.js";
+import { getPullRequestFiles } from "./pr-files.js";
 
-export async function issueToTask(payload, env) {
-  const { title, number, body, html_url, user, created_at } = payload.issue;
+export async function issueToTask(payload, env, type = 'issue') {
+  // Handle both issues and pull requests
+  const item = type === 'pull_request' ? payload.pull_request : payload.issue;
+  const { title, number, body, html_url, user, created_at } = item;
   const repository = payload.repository;
   const owner = repository.owner;
   const repoName = repository.name;
@@ -29,12 +32,21 @@ export async function issueToTask(payload, env) {
   conversationText += `**GitHub:** [${html_url}](${html_url})<hr>\n\n`;
   conversationText += `${body || '_No description provided_'}`;
 
+  // Add file changes for pull requests
+  if (type === 'pull_request') {
+    const fileChanges = await getPullRequestFiles(owner.login, repoName, number, env.GITHUB_TOKEN);
+    conversationText += fileChanges;
+  }
+
   // Get all comments if this is not an issue creation
   if (payload.action !== "opened") {
     try {
       // Use GitHub API to fetch comments
       if (env.GITHUB_TOKEN) {
-        const commentsUrl = `https://api.github.com/repos/${owner.login}/${repoName}/issues/${number}/comments`;
+        // Pull requests use different API endpoints for comments
+        const commentsUrl = type === 'pull_request' 
+          ? `https://api.github.com/repos/${owner.login}/${repoName}/pulls/${number}/comments`
+          : `https://api.github.com/repos/${owner.login}/${repoName}/issues/${number}/comments`;
         const response = await fetch(commentsUrl, {
           headers: {
             'Authorization': `token ${env.GITHUB_TOKEN}`,
