@@ -3,7 +3,7 @@ import { issueToTask } from './util/issue-to-task.js';
 import { createTask } from './asana-task-create.js';
 import { findTaskContaining } from './asana-task-find.js';
 import { markTaskComplete } from './asana-task-completed.js';
-import { updateTaskDescription } from './asana-task-update-description.js';
+import { updateTaskDescription, updateTaskWithCustomFields } from './asana-task-update-description.js';
 
 export class IssueSync {
   constructor(asanaAPI, env) {
@@ -39,7 +39,9 @@ export class IssueSync {
         repository,
         creator,
         githubUrl,
-        this.env
+        this.env,
+        'Issue',
+        taskContent.labels
       );
     } else if (action === "edited") {
       const theTask = await findTaskContaining(this.asanaAPI, issueUrl, this.projectId, this.env);
@@ -51,6 +53,8 @@ export class IssueSync {
         const creator = payload.issue.user.login;
         const githubUrl = payload.issue.html_url;
         
+        console.log('issue-sync taskContent.labels:', taskContent.labels);
+        console.log('issue-sync about to call createTask with labels:', taskContent.labels);
         result = await createTask(
           this.asanaAPI,
           taskContent,
@@ -58,11 +62,27 @@ export class IssueSync {
           repository,
           creator,
           githubUrl,
-          this.env
+          this.env,
+          'Issue',
+          taskContent.labels
         );
       } else {
         const taskContent = await issueToTask(payload, this.env);
-        result = await updateTaskDescription(this.asanaAPI, theTask.gid, taskContent);
+        const repository = payload.repository.name;
+        const creator = payload.issue.user.login;
+        const githubUrl = payload.issue.html_url;
+        
+        result = await updateTaskWithCustomFields(
+          this.asanaAPI, 
+          theTask.gid, 
+          taskContent, 
+          repository, 
+          creator, 
+          githubUrl, 
+          this.env, 
+          'Issue', 
+          taskContent.labels
+        );
       }
     } else if (action === "closed" || action === "reopened") {
       const theTask = await findTaskContaining(this.asanaAPI, issueUrl, this.projectId, this.env);
@@ -81,7 +101,9 @@ export class IssueSync {
           repository,
           creator,
           githubUrl,
-          this.env
+          this.env,
+          'Issue',
+          taskContent.labels
         );
         
         const completed = action === "closed";
@@ -119,12 +141,28 @@ export class IssueSync {
         repository,
         creator,
         githubUrl,
-        this.env
+        this.env,
+        'Issue',
+        taskContent.labels
       );
     } else {
       // Update task description to include the new comment
       const taskContent = await issueToTask(payload, this.env);
-      result = await updateTaskDescription(this.asanaAPI, theTask.gid, taskContent);
+      const repository = payload.repository.name;
+      const creator = payload.issue.user.login;
+      const githubUrl = payload.issue.html_url;
+      
+      result = await updateTaskWithCustomFields(
+        this.asanaAPI, 
+        theTask.gid, 
+        taskContent, 
+        repository, 
+        creator, 
+        githubUrl, 
+        this.env, 
+        'Issue', 
+        taskContent.labels
+      );
     }
     
     return { status: 'processed', action: 'comment_created', result };
@@ -154,7 +192,8 @@ export class IssueSync {
         creator,
         githubUrl,
         this.env,
-        'PR'
+        'PR',
+        taskContent.labels
       );
     } else if (action === "edited") {
       const theTask = await findTaskContaining(this.asanaAPI, prUrl, this.projectId, this.env);
@@ -174,11 +213,26 @@ export class IssueSync {
           creator,
           githubUrl,
           this.env,
-          'PR'
+          'PR',
+          taskContent.labels
         );
       } else {
         const taskContent = await issueToTask(payload, this.env, 'pull_request');
-        result = await updateTaskDescription(this.asanaAPI, theTask.gid, taskContent);
+        const repository = payload.repository.name;
+        const creator = payload.pull_request.user.login;
+        const githubUrl = payload.pull_request.html_url;
+        
+        result = await updateTaskWithCustomFields(
+          this.asanaAPI, 
+          theTask.gid, 
+          taskContent, 
+          repository, 
+          creator, 
+          githubUrl, 
+          this.env, 
+          'PR', 
+          taskContent.labels
+        );
       }
     } else if (action === "closed" || action === "reopened") {
       const theTask = await findTaskContaining(this.asanaAPI, prUrl, this.projectId, this.env);
@@ -198,7 +252,8 @@ export class IssueSync {
           creator,
           githubUrl,
           this.env,
-          'PR'
+          'PR',
+          taskContent.labels
         );
         
         const completed = action === "closed";
@@ -237,12 +292,27 @@ export class IssueSync {
         creator,
         githubUrl,
         this.env,
-        'PR'
+        'PR',
+        taskContent.labels
       );
     } else {
       // Update task description to include the new comment
       const taskContent = await issueToTask(payload, this.env, 'pull_request');
-      result = await updateTaskDescription(this.asanaAPI, theTask.gid, taskContent);
+      const repository = payload.repository.name;
+      const creator = payload.pull_request.user.login;
+      const githubUrl = payload.pull_request.html_url;
+      
+      result = await updateTaskWithCustomFields(
+        this.asanaAPI, 
+        theTask.gid, 
+        taskContent, 
+        repository, 
+        creator, 
+        githubUrl, 
+        this.env, 
+        'PR', 
+        taskContent.labels
+      );
     }
     
     return { status: 'processed', action: 'pr_comment_created', result };
