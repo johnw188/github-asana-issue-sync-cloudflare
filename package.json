@@ -10,12 +10,12 @@
     "deploy": "wrangler deploy",
     "test": "vitest",
     "test:watch": "vitest --watch",
-    "test:webhook": "node test-webhook.js",
-    "test:webhook:opened": "node test-webhook.js issueOpened",
-    "test:webhook:edited": "node test-webhook.js issueEdited",
-    "test:webhook:closed": "node test-webhook.js issueClosed",
-    "test:webhook:reopened": "node test-webhook.js issueReopened",
-    "test:webhook:comment": "node test-webhook.js commentCreated",
+    "test:webhook": "node dev/test-webhook.js",
+    "test:webhook:opened": "node dev/test-webhook.js issueOpened",
+    "test:webhook:edited": "node dev/test-webhook.js issueEdited",
+    "test:webhook:closed": "node dev/test-webhook.js issueClosed",
+    "test:webhook:reopened": "node dev/test-webhook.js issueReopened",
+    "test:webhook:comment": "node dev/test-webhook.js commentCreated",
     "logs": "wrangler tail"
   },
   "dependencies": {

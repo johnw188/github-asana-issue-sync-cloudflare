@@ -6,5 +6,11 @@ dist/
 *.log
 .DS_Store
 
+# Editor directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
+
 # Wrangler
 .wrangler/
