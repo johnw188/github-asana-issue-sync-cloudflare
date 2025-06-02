@@ -97,5 +97,8 @@ export async function issueToTask(payload, env, type = 'issue') {
   
   const html_notes = renderMarkdown(conversationText);
 
-  return { name, html_notes };
+  // Extract labels from the issue/PR
+  const labels = item.labels || [];
+
+  return { name, html_notes, labels };
 }

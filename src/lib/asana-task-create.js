@@ -1,12 +1,13 @@
 // Create Asana tasks from GitHub issues
-import { getCustomFieldForProject } from "./util/custom-field-helper.js";
+import { getCustomFieldForProject, getMultiEnumOptionsForField } from "./util/custom-field-helper.js";
 
-export async function createTask(asanaAPI, content, projectId, repository, creator, githubUrl, env, type = 'Issue') {
+export async function createTask(asanaAPI, content, projectId, repository, creator, githubUrl, env, type = 'Issue', labels = []) {
   // Get custom field IDs from environment
   const repositoryFieldGid = env.REPOSITORY_FIELD_ID;
   const creatorFieldGid = env.CREATOR_FIELD_ID;
   const githubUrlFieldGid = env.GITHUB_URL_FIELD_ID;
   const issueTypeFieldGid = env.ISSUE_TYPE_FIELD_ID;
+  const labelsFieldGid = env.LABELS_FIELD_ID;
   
   let customFields = {};
   
@@ -41,6 +42,19 @@ export async function createTask(asanaAPI, content, projectId, repository, creat
       }
     } catch (error) {
       console.error('Error with issue type custom field:', error.message);
+    }
+  }
+  
+  // Add Labels field if configured and labels exist
+  if (labelsFieldGid && labels && labels.length > 0) {
+    try {
+      const labelNames = labels.map(label => label.name);
+      const labelOptionGids = await getMultiEnumOptionsForField(asanaAPI, labelsFieldGid, labelNames);
+      if (labelOptionGids.length > 0) {
+        customFields[labelsFieldGid] = labelOptionGids;
+      }
+    } catch (error) {
+      console.error('Error with labels custom field:', error.message);
     }
   }
   

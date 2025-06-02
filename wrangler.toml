@@ -7,6 +7,9 @@ logpush = true
 enabled = true
 
 [env.production]
+routes = [
+  { pattern = "issue-sync.ant-mcp.org", custom_domain = true }
+]
 vars = {}
 
 [env.production.secrets]
