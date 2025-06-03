@@ -31,14 +31,22 @@ Here's a test table to verify our table-to-preformatted conversion:
 | Images  | ![image](https://example.com/img.png) | Text only |
 | Links   | [GitHub](https://github.com) | Still works |
 
+## Testing Image Support
+
+Let's test image attachment processing:
+
+![Test Image](https://github.com/octocat.png)
+![Another Image](https://avatars.githubusercontent.com/u/583231?v=4)
+
 ## Test Checklist
 
 - [x] Basic functionality works
-- [ ] Table conversion implemented  
+- [x] Table conversion implemented  
 - [x] Error handling added
+- [x] Image processing added
 - [ ] Production deployment
 
-This should test our table handling!`,
+This should test our table handling and image processing!`,
   number: issueNumber,
   user: { 
     login: "testuser",

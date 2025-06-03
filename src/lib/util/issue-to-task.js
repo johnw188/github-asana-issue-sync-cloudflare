@@ -1,5 +1,4 @@
 // Convert GitHub Issue to Asana Task format
-import { renderMarkdown } from "./markdown-to-asana-html.js";
 import { getPullRequestFiles } from "./pr-files.js";
 
 export async function issueToTask(payload, env, type = 'issue') {
@@ -95,10 +94,8 @@ export async function issueToTask(payload, env, type = 'issue') {
     }
   }
   
-  const html_notes = renderMarkdown(conversationText);
-
   // Extract labels from the issue/PR
   const labels = item.labels || [];
 
-  return { name, html_notes, labels };
+  return { name, markdownContent: conversationText, labels };
 }

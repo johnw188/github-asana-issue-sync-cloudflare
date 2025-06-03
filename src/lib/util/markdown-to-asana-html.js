@@ -2,6 +2,7 @@
 
 import { micromark } from "micromark";
 import { gfm, gfmHtml } from "micromark-extension-gfm";
+import { processImagesInHtml } from "./asana-attachment-helper.js";
 
 /**
  * Convert HTML table to properly aligned monospaced text
@@ -18,8 +19,14 @@ function convertTableToPreformatted(tableHtml) {
     const cellMatches = rowMatch.match(/<(th|td)[^>]*>[\s\S]*?<\/(th|td)>/gi) || [];
     
     for (const cellMatch of cellMatches) {
-      // Extract text content, removing HTML tags
-      let cellText = cellMatch
+      // First, convert any img tags to text links before removing HTML tags
+      let cellContent = cellMatch
+        .replace(/<img[^>]+src=["']([^"']+)["'][^>]*alt=["']([^"']*)["'][^>]*>/gi, '[$2]($1)')
+        .replace(/<img[^>]+alt=["']([^"']*)["'][^>]*src=["']([^"']+)["'][^>]*>/gi, '[$1]($2)')
+        .replace(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi, '[Image]($1)'); // Fallback for images without alt text
+      
+      // Extract text content, removing remaining HTML tags
+      let cellText = cellContent
         .replace(/<[^>]*>/g, '') // Remove all HTML tags
         .replace(/&lt;/g, '<')
         .replace(/&gt;/g, '>')
@@ -75,9 +82,12 @@ function convertTableToPreformatted(tableHtml) {
  * @link https://forum.asana.com/t/changes-are-coming-to-rich-text-html-notes-and-html-text-in-asana/113434/9
  *
  * @param {string} rawMd Markdown source
- * @returns {string} Rendered HTML string, with Asana-unsafe tags removed
+ * @param {Object} options Optional configuration
+ * @param {Object} options.asanaAPI Asana API client for image processing
+ * @param {string} options.taskGid Task GID for attaching images
+ * @returns {Promise<string>} Rendered HTML string, with Asana-unsafe tags removed
  */
-export function renderMarkdown(rawMd) {
+export async function renderMarkdown(rawMd, options = {}) {
   const rendered = micromark(rawMd, {
     allowDangerousHtml: true,
     extensions: [gfm()],
@@ -110,9 +120,20 @@ export function renderMarkdown(rawMd) {
     .trim();
 
   // Final cleanup pass
-  const final = `<body>${cleaned}</body>`
+  let final = `<body>${cleaned}</body>`
     // Remove newlines after <hr> tags
     .replace(/<hr>\n+/g, '<hr>');
+
+  // Process images if Asana API and task GID are provided
+  if (options.asanaAPI && options.taskGid) {
+    try {
+      console.log('🖼️  Processing images for Asana attachments...');
+      final = await processImagesInHtml(final, options.asanaAPI, options.taskGid);
+    } catch (error) {
+      console.error('❌ Error processing images:', error.message);
+      // Continue without image processing if it fails
+    }
+  }
 
   return final;
 }
