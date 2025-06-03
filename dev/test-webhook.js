@@ -1,8 +1,16 @@
 // Test script for local development
 
-// Generate unique issue number based on timestamp
-const issueNumber = Math.floor(Date.now() / 1000); // Unix timestamp for uniqueness
+// Check for --id parameter
+const args = process.argv.slice(2);
+const idArgIndex = args.findIndex(arg => arg === '--id');
+const customId = idArgIndex !== -1 && args[idArgIndex + 1] ? args[idArgIndex + 1] : null;
+
+// Generate issue number - use custom ID if provided, otherwise timestamp
+const issueNumber = customId ? parseInt(customId) : Math.floor(Date.now() / 1000);
 const timestamp = new Date().toISOString();
+
+console.log(`🆔 Using issue/PR number: ${issueNumber}${customId ? ' (custom)' : ' (generated)'}`);
+console.log();
 
 const baseIssue = {
   html_url: `https://github.com/test/repo/issues/${issueNumber}`,
@@ -222,7 +230,14 @@ async function runAllTests() {
 }
 
 // Run individual test or all tests
-const testName = process.argv[2];
+// Filter out --id and its value from args to get the test name
+const filteredArgs = args.filter((arg, index) => {
+  if (arg === '--id') return false;
+  if (args[index - 1] === '--id') return false;
+  return true;
+});
+const testName = filteredArgs[0];
+
 if (testName && testPayloads[testName]) {
   let eventType = 'issues';
   if (testName === 'commentCreated') {

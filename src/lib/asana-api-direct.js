@@ -142,4 +142,14 @@ export class AsanaAPI {
     const result = await response.json();
     return result.data;
   }
+
+  async getAttachmentsForObject(parentGid, opts = {}) {
+    const params = new URLSearchParams();
+    params.append('parent', parentGid);
+    if (opts.opt_fields) params.append('opt_fields', opts.opt_fields);
+    
+    const endpoint = `/attachments?${params}`;
+    const result = await this.request('GET', endpoint);
+    return result;
+  }
 }

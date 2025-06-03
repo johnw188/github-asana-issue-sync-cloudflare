@@ -1,19 +1,95 @@
 // Helper functions for creating Asana attachments from external URLs
 
 /**
- * Download an image and upload it as a file attachment to Asana
+ * Generate a hash-based filename for an image URL to enable deduplication
+ * @param {string} imageUrl - The URL of the image
+ * @param {string} contentType - MIME type of the image
+ * @param {string} altText - Optional alt text for the image
+ * @returns {string} Hash-based filename
+ */
+function generateHashedFilename(imageUrl, contentType, altText = '') {
+  // Create a simple hash of the URL (not cryptographically secure, just for deduplication)
+  let hash = 0;
+  for (let i = 0; i < imageUrl.length; i++) {
+    const char = imageUrl.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  
+  // Convert to positive hex string
+  const hashString = Math.abs(hash).toString(16).padStart(8, '0');
+  
+  // Use alt text if provided, otherwise use "image"
+  const baseName = altText ? altText.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase() : 'image';
+  
+  // Get file extension from content type
+  const extensionMap = {
+    'image/jpeg': '.jpg',
+    'image/jpg': '.jpg', 
+    'image/png': '.png',
+    'image/gif': '.gif',
+    'image/webp': '.webp',
+    'image/svg+xml': '.svg'
+  };
+  
+  const extension = extensionMap[contentType] || '.png';
+  
+  return `${baseName}-${hashString}${extension}`;
+}
+
+/**
+ * Check if an image with the same URL hash already exists as an attachment
+ * @param {Object} asanaAPI - Asana API client
+ * @param {string} parentGid - The GID of the parent task
+ * @param {string} hashedFilename - The hash-based filename to look for
+ * @returns {Promise<Object|null>} Existing attachment or null if not found
+ */
+async function findExistingImageAttachment(asanaAPI, parentGid, hashedFilename) {
+  try {
+    console.log(`🔍 Checking for existing attachment: ${hashedFilename}`);
+    
+    // Get existing attachments for this task
+    const attachment_opts = {
+      'parent': parentGid,
+      'opt_fields': 'gid,name,resource_subtype'
+    };
+    
+    const attachments_response = await asanaAPI.getAttachmentsForObject(parentGid, attachment_opts);
+    const existing_attachments = attachments_response.data || [];
+    
+    // Look for an attachment with the same hashed filename
+    const existingAttachment = existing_attachments.find(att => 
+      att.name === hashedFilename && att.resource_subtype === 'asana'
+    );
+    
+    if (existingAttachment) {
+      console.log(`✅ Found existing attachment: ${existingAttachment.gid}`);
+      return existingAttachment;
+    }
+    
+    console.log(`📝 No existing attachment found for: ${hashedFilename}`);
+    return null;
+    
+  } catch (error) {
+    console.error(`❌ Error checking existing attachments:`, error.message);
+    return null; // Continue with upload if check fails
+  }
+}
+
+/**
+ * Download an image and upload it as a file attachment to Asana (with deduplication)
  * @param {Object} asanaAPI - Asana API client
  * @param {string} imageUrl - The URL of the image to download
  * @param {string} parentGid - The GID of the parent task
  * @param {string} imageName - Optional name for the image attachment
- * @returns {Promise<Object>} The created attachment object
+ * @returns {Promise<Object>} The created or existing attachment object
  */
 export async function createImageFileAttachment(asanaAPI, imageUrl, parentGid, imageName = null) {
   try {
-    console.log(`📎 Downloading and uploading image: ${imageUrl}`);
+    console.log(`📎 Processing image: ${imageUrl}`);
     console.log(`   Parent: ${parentGid}`);
     
-    // Step 1: Download the image
+    // Step 1: Download the image to get content type
     const imageResponse = await fetch(imageUrl);
     if (!imageResponse.ok) {
       throw new Error(`Failed to download image: ${imageResponse.status} ${imageResponse.statusText}`);
@@ -22,22 +98,31 @@ export async function createImageFileAttachment(asanaAPI, imageUrl, parentGid, i
     const imageBuffer = await imageResponse.arrayBuffer();
     const contentType = imageResponse.headers.get('content-type') || 'image/png';
     
-    // Step 2: Extract filename and ensure it has proper extension
-    const defaultName = imageName || extractImageNameFromUrl(imageUrl);
-    const fileName = ensureImageExtension(defaultName, contentType);
+    // Step 2: Generate hash-based filename for deduplication
+    const hashedFilename = generateHashedFilename(imageUrl, contentType, imageName);
     
-    console.log(`   Downloaded ${imageBuffer.byteLength} bytes`);
     console.log(`   Content-Type: ${contentType}`);
-    console.log(`   File name: ${fileName}`);
+    console.log(`   Hash-based filename: ${hashedFilename}`);
     
-    // Step 3: Upload as file attachment to Asana
-    const attachment = await asanaAPI.createFileAttachment(parentGid, imageBuffer, fileName, contentType);
+    // Step 3: Check if we already have this image as an attachment
+    const existingAttachment = await findExistingImageAttachment(asanaAPI, parentGid, hashedFilename);
     
-    console.log(`✅ Created file attachment: ${attachment.gid}`);
+    if (existingAttachment) {
+      console.log(`♻️  Reusing existing attachment: ${existingAttachment.gid}`);
+      return existingAttachment;
+    }
+    
+    // Step 4: Upload as new file attachment
+    console.log(`   Downloaded ${imageBuffer.byteLength} bytes`);
+    console.log(`   Uploading new attachment...`);
+    
+    const attachment = await asanaAPI.createFileAttachment(parentGid, imageBuffer, hashedFilename, contentType);
+    
+    console.log(`✅ Created new file attachment: ${attachment.gid}`);
     return attachment;
     
   } catch (error) {
-    console.error(`❌ Failed to create file attachment for ${imageUrl}:`, error.message);
+    console.error(`❌ Failed to process image attachment for ${imageUrl}:`, error.message);
     throw error;
   }
 }
