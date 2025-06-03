@@ -15,7 +15,18 @@ console.log();
 const baseIssue = {
   html_url: `https://github.com/test/repo/issues/${issueNumber}`,
   title: `Test Issue #${issueNumber}`,
-  body: `This is a test issue created at ${timestamp}`,
+  body: `This is a test issue created at ${timestamp}
+
+<!-- This comment should be stripped out -->
+## Description
+
+This issue tests HTML comment handling.
+
+<!-- Another comment that should be removed -->
+- Item 1
+- Item 2
+
+<!-- Final comment -->`,
   number: issueNumber,
   user: { 
     login: "testuser",
@@ -52,6 +63,7 @@ another image:
 testing
 
 ## Test Checklist
+<!-- Go over all the following points, and put an \`x\` in all the boxes that apply. -->
 
 - [x] Basic functionality works
 - [x] Table conversion implemented  
@@ -59,7 +71,15 @@ testing
 - [x] Image processing added
 - [ ] Production deployment
 
-This should test our table handling and image processing!`,
+<!-- Add any other context, implementation notes, or design decisions -->
+This should test our table handling and image processing!
+
+## Types of changes
+<!-- What types of changes does your code introduce? Put an \`x\` in all the boxes that apply: -->
+- [ ] Bug fix (non-breaking change which fixes an issue)
+- [x] New feature (non-breaking change which adds functionality)  
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] Documentation update`,
   number: issueNumber,
   user: { 
     login: "testuser",

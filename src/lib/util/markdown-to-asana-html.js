@@ -117,6 +117,8 @@ export async function renderMarkdown(rawMd, options = {}) {
     // Clean up extra newlines inside blockquotes
     .replace(/<blockquote>\n/g, '<blockquote>')
     .replace(/\n<\/blockquote>/g, '</blockquote>')
+    // Remove HTML comments (Asana doesn't support them)
+    .replace(/<!--[\s\S]*?-->/g, '')
     .trim();
 
   // Final cleanup pass
