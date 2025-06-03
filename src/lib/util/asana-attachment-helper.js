@@ -109,7 +109,7 @@ export async function createImageFileAttachment(asanaAPI, imageUrl, parentGid, i
     
     if (existingAttachment) {
       console.log(`♻️  Reusing existing attachment: ${existingAttachment.gid}`);
-      return existingAttachment;
+      return { attachment: existingAttachment, wasCreated: false, filename: hashedFilename };
     }
     
     // Step 4: Upload as new file attachment
@@ -119,7 +119,7 @@ export async function createImageFileAttachment(asanaAPI, imageUrl, parentGid, i
     const attachment = await asanaAPI.createFileAttachment(parentGid, imageBuffer, hashedFilename, contentType);
     
     console.log(`✅ Created new file attachment: ${attachment.gid}`);
-    return attachment;
+    return { attachment, wasCreated: true, filename: hashedFilename };
     
   } catch (error) {
     console.error(`❌ Failed to process image attachment for ${imageUrl}:`, error.message);
@@ -283,6 +283,8 @@ export async function processImagesInHtml(htmlContent, asanaAPI, parentGid) {
     console.log(`🖼️  Processing ${images.length} images for Asana attachments`);
     
     let updatedContent = htmlContent;
+    const createdAttachmentGids = []; // Track newly created attachments
+    const createdAttachmentFilenames = []; // Track filenames for story cleanup
     
     // Process each image
     for (const image of images) {
@@ -296,18 +298,24 @@ export async function processImagesInHtml(htmlContent, asanaAPI, parentGid) {
           
         } else {
           // Download and upload regular images as file attachments
-          const attachment = await createImageFileAttachment(
+          const attachmentResult = await createImageFileAttachment(
             asanaAPI, 
             image.src, 
             parentGid, 
             image.alt || null
           );
           
+          // Track if this was a newly created attachment
+          if (attachmentResult.wasCreated) {
+            createdAttachmentGids.push(attachmentResult.attachment.gid);
+            createdAttachmentFilenames.push(attachmentResult.filename);
+          }
+          
           // Replace img tag with Asana inline image reference
-          const asanaImgTag = `<img data-asana-gid="${attachment.gid}">`;
+          const asanaImgTag = `<img data-asana-gid="${attachmentResult.attachment.gid}">`;
           updatedContent = updatedContent.replace(image.fullMatch, asanaImgTag);
           
-          console.log(`✅ Replaced image: ${image.src} -> attachment:${attachment.gid}`);
+          console.log(`✅ Replaced image: ${image.src} -> attachment:${attachmentResult.attachment.gid}`);
         }
         
       } catch (error) {
@@ -324,6 +332,11 @@ export async function processImagesInHtml(htmlContent, asanaAPI, parentGid) {
     if (images.length > 0) {
       console.log(`⏱️  Adding 1-second delay for Asana to process ${images.length} image dimensions...`);
       await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Clean up attachment stories only for newly created attachments
+      if (createdAttachmentGids.length > 0) {
+        await cleanupAttachmentStories(asanaAPI, parentGid, createdAttachmentGids, createdAttachmentFilenames);
+      }
     }
     
     return updatedContent;
@@ -331,6 +344,69 @@ export async function processImagesInHtml(htmlContent, asanaAPI, parentGid) {
   } catch (error) {
     console.error('❌ Error processing images:', error.message);
     return htmlContent; // Return original content if processing fails
+  }
+}
+
+/**
+ * Clean up attachment stories for specific newly created attachments
+ * @param {Object} asanaAPI - Asana API client
+ * @param {string} taskGid - The GID of the task
+ * @param {Array<string>} attachmentGids - Array of attachment GIDs to clean up stories for
+ * @param {Array<string>} attachmentFilenames - Array of hashed filenames to match in story text
+ * @returns {Promise<void>}
+ */
+async function cleanupAttachmentStories(asanaAPI, taskGid, attachmentGids, attachmentFilenames = []) {
+  try {
+    console.log(`🧹 Cleaning up attachment stories for ${attachmentGids.length} newly created attachments`);
+    
+    // Get stories for the task
+    const storiesOpts = {
+      'opt_fields': 'gid,resource_subtype,text,type,target'
+    };
+    
+    const storiesResponse = await asanaAPI.getStoriesForTask(taskGid, storiesOpts);
+    const stories = storiesResponse.data || [];
+    
+    // Debug: Log all stories to see what we have
+    console.log(`   Found ${stories.length} total stories:`);
+    stories.forEach((story, index) => {
+      console.log(`     ${index + 1}. ${story.resource_subtype || 'unknown'} - "${story.text || 'no text'}" - target: ${story.target?.gid || 'none'}`);
+    });
+    
+    // Filter for attachment stories that match our newly created attachments
+    const targetStories = stories.filter(story => {
+      // Check if it's an attachment story
+      if (story.resource_subtype !== 'attachment_added') {
+        return false;
+      }
+      
+      // Check if any of our hashed filenames appear in the story text
+      if (story.text && attachmentFilenames.length > 0) {
+        for (const filename of attachmentFilenames) {
+          if (story.text.includes(filename)) {
+            return true;
+          }
+        }
+      }
+      
+      return false;
+    });
+    
+    console.log(`   Found ${targetStories.length} attachment stories to delete for newly created attachments`);
+    
+    // Delete targeted attachment stories
+    for (const story of targetStories) {
+      try {
+        await asanaAPI.deleteStory(story.gid);
+        console.log(`   ✅ Deleted attachment story: ${story.gid} (for attachment: ${story.target.gid})`);
+      } catch (error) {
+        console.error(`   ❌ Failed to delete story ${story.gid}:`, error.message);
+      }
+    }
+    
+  } catch (error) {
+    console.error(`❌ Error cleaning up attachment stories:`, error.message);
+    // Don't throw - this is cleanup, not critical functionality
   }
 }
 

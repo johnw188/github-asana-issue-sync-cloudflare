@@ -152,4 +152,21 @@ export class AsanaAPI {
     const result = await this.request('GET', endpoint);
     return result;
   }
+
+  // Story methods
+  async getStoriesForTask(taskGid, opts = {}) {
+    const params = new URLSearchParams();
+    params.append('parent', taskGid);
+    if (opts.opt_fields) params.append('opt_fields', opts.opt_fields);
+    
+    const endpoint = `/stories?${params}`;
+    const result = await this.request('GET', endpoint);
+    return result;
+  }
+
+  async deleteStory(storyGid) {
+    const endpoint = `/stories/${storyGid}`;
+    const result = await this.request('DELETE', endpoint);
+    return result;
+  }
 }
