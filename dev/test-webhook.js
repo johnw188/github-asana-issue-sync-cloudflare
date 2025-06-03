@@ -28,6 +28,7 @@ This issue tests HTML comment handling.
 
 <!-- Final comment -->`,
   number: issueNumber,
+  state: "open", // Will be modified for specific test cases
   user: { 
     login: "testuser",
     html_url: "https://github.com/testuser"
@@ -81,6 +82,7 @@ This should test our table handling and image processing!
 - [ ] Breaking change (fix or feature that would cause existing functionality to change)
 - [ ] Documentation update`,
   number: issueNumber,
+  state: "open", // Will be modified for specific test cases
   user: { 
     login: "testuser",
     html_url: "https://github.com/testuser"
@@ -100,6 +102,12 @@ const testPayloads = {
     repository: baseRepository
   },
   
+  issueOpenedButClosed: {
+    action: "opened", // Simulating import of a closed issue
+    issue: { ...baseIssue, state: "closed" },
+    repository: baseRepository
+  },
+  
   issueEdited: {
     action: "edited",
     issue: {
@@ -112,7 +120,7 @@ const testPayloads = {
   
   issueClosed: {
     action: "closed",
-    issue: baseIssue,
+    issue: { ...baseIssue, state: "closed" },
     repository: baseRepository
   },
   
@@ -155,7 +163,7 @@ const testPayloads = {
   
   prClosed: {
     action: "closed",
-    pull_request: basePullRequest,
+    pull_request: { ...basePullRequest, state: "closed" },
     repository: baseRepository
   },
   

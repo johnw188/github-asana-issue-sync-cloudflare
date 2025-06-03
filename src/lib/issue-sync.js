@@ -51,10 +51,12 @@ export class IssueSync {
       true // Enable image processing
     );
     
-    // Step 3: Handle completion status for closed/reopened actions
-    if (action === "closed" || action === "reopened") {
-      const completed = action === "closed";
-      result = await markTaskComplete(this.asanaAPI, completed, task.gid);
+    // Step 3: Handle completion status based on GitHub issue state
+    const githubState = payload.issue.state; // 'open' or 'closed'
+    const shouldBeCompleted = githubState === 'closed';
+    
+    if (action === "closed" || action === "reopened" || shouldBeCompleted !== undefined) {
+      result = await markTaskComplete(this.asanaAPI, shouldBeCompleted, task.gid);
     } else {
       result = task.permalink_url;
     }
@@ -134,10 +136,12 @@ export class IssueSync {
       true // Enable image processing
     );
     
-    // Step 3: Handle completion status for closed/reopened actions
-    if (action === "closed" || action === "reopened") {
-      const completed = action === "closed";
-      result = await markTaskComplete(this.asanaAPI, completed, task.gid);
+    // Step 3: Handle completion status based on GitHub PR state
+    const githubState = payload.pull_request.state; // 'open' or 'closed'
+    const shouldBeCompleted = githubState === 'closed';
+    
+    if (action === "closed" || action === "reopened" || shouldBeCompleted !== undefined) {
+      result = await markTaskComplete(this.asanaAPI, shouldBeCompleted, task.gid);
     } else {
       result = task.permalink_url;
     }
