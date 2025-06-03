@@ -235,6 +235,12 @@ export async function processImagesInHtml(htmlContent, asanaAPI, parentGid) {
       }
     }
     
+    // Add delay after image uploads to allow Asana to process dimensions
+    if (images.length > 0) {
+      console.log(`⏱️  Adding 1-second delay for Asana to process ${images.length} image dimensions...`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
     return updatedContent;
     
   } catch (error) {

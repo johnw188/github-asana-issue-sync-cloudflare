@@ -26,6 +26,11 @@ export async function updateTaskDescription(asanaAPI, taskGid, markdownContent, 
       }
     };
     
+    console.log(`📄 HTML being sent to Asana for task ${taskGid}:`);
+    console.log('='.repeat(80));
+    console.log(html_notes);
+    console.log('='.repeat(80));
+    
     const result = await asanaAPI.updateTask(taskGid, updateData);
     
     console.log(`✅ Updated task description: ${taskGid}`);

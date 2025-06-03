@@ -35,8 +35,13 @@ Here's a test table to verify our table-to-preformatted conversion:
 
 Let's test image attachment processing:
 
-![Test Image](https://github.com/octocat.png)
-![Another Image](https://avatars.githubusercontent.com/u/583231?v=4)
+![GitHub Logo](https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png)
+
+another image:
+
+![Python Logo](https://www.python.org/static/community_logos/python-logo-master-v3-TM.png)
+
+testing
 
 ## Test Checklist
 
