@@ -8,6 +8,22 @@ export async function updateTaskDescription(asanaAPI, task_gid, content) {
     return result.permalink_url;
   } catch (error) {
     console.error('Error updating task description:', error.message);
+    
+    // If it's an XML parsing error, log the HTML content that caused it
+    if (error.message.includes('xml_parsing_error') || error.message.includes('XML is invalid')) {
+      console.error('❌ XML PARSING ERROR - Attempted HTML content:');
+      console.error('='.repeat(80));
+      if (content.html_notes) {
+        console.error(content.html_notes);
+      } else if (content.notes) {
+        console.error('Notes field:', content.notes);
+      } else {
+        console.error('No HTML content found');
+      }
+      console.error('='.repeat(80));
+      console.error('Content object:', JSON.stringify(content, null, 2));
+    }
+    
     throw error;
   }
 }
@@ -89,6 +105,22 @@ export async function updateTaskWithCustomFields(asanaAPI, task_gid, content, re
     return result.permalink_url;
   } catch (error) {
     console.error('Error updating task with custom fields:', error.message);
+    
+    // If it's an XML parsing error, log the HTML content that caused it
+    if (error.message.includes('xml_parsing_error') || error.message.includes('XML is invalid')) {
+      console.error('❌ XML PARSING ERROR - Attempted HTML content:');
+      console.error('='.repeat(80));
+      if (content.html_notes) {
+        console.error(content.html_notes);
+      } else if (content.notes) {
+        console.error('Notes field:', content.notes);
+      } else {
+        console.error('No HTML content found in update data');
+      }
+      console.error('='.repeat(80));
+      console.error('Full update data:', JSON.stringify(updateData, null, 2));
+    }
+    
     throw error;
   }
 }

@@ -19,7 +19,26 @@ const baseIssue = {
 const basePullRequest = {
   html_url: `https://github.com/test/repo/pull/${issueNumber}`,
   title: `Test Pull Request #${issueNumber}`,
-  body: `This is a test pull request created at ${timestamp}`,
+  body: `This is a test pull request created at ${timestamp}
+
+## Testing Table Conversion
+
+Here's a test table to verify our table-to-preformatted conversion:
+
+| Feature | Before | After |
+|---------|--------|-------|
+| Tables  | ❌ XML Error | ✅ Works |
+| Images  | ![image](https://example.com/img.png) | Text only |
+| Links   | [GitHub](https://github.com) | Still works |
+
+## Test Checklist
+
+- [x] Basic functionality works
+- [ ] Table conversion implemented  
+- [x] Error handling added
+- [ ] Production deployment
+
+This should test our table handling!`,
   number: issueNumber,
   user: { 
     login: "testuser",
@@ -29,7 +48,7 @@ const basePullRequest = {
 };
 
 const baseRepository = {
-  name: "test-repo",
+  name: "test",
   owner: { login: "test-owner" }
 };
 

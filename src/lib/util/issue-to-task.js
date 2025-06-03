@@ -38,8 +38,8 @@ export async function issueToTask(payload, env, type = 'issue') {
     conversationText += fileChanges;
   }
 
-  // Get all comments if this is not an issue creation
-  if (payload.action !== "opened") {
+  // Get all comments (always fetch to ensure complete conversation history)
+  if (true) {
     try {
       // Use GitHub API to fetch comments
       if (env.GITHUB_TOKEN) {
