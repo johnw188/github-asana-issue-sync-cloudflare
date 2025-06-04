@@ -76,6 +76,22 @@ export async function createTask(asanaAPI, content, projectId, repository, creat
     return result; // Return full task object
   } catch (error) {
     console.error('Error creating task:', error.message);
+    
+    // If it's an XML parsing error, log the HTML content that caused it
+    if (error.message.includes('xml_parsing_error') || error.message.includes('XML is invalid')) {
+      console.error('❌ XML PARSING ERROR - Attempted HTML content:');
+      console.error('='.repeat(80));
+      if (content.html_notes) {
+        console.error(content.html_notes);
+      } else if (content.notes) {
+        console.error('Notes field:', content.notes);
+      } else {
+        console.error('No HTML content found in task data');
+      }
+      console.error('='.repeat(80));
+      console.error('Full task data:', JSON.stringify(task_data, null, 2));
+    }
+    
     throw error;
   }
 }

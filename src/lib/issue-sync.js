@@ -1,9 +1,8 @@
-// Core issue synchronization logic
+// Core issue synchronization logic - refactored to use two-step approach
 import { issueToTask } from './util/issue-to-task.js';
-import { createTask } from './asana-task-create.js';
-import { findTaskContaining } from './asana-task-find.js';
+import { ensureTaskExists } from './asana-task-ensure.js';
+import { updateTaskDescription } from './asana-task-update-description.js';
 import { markTaskComplete } from './asana-task-completed.js';
-import { updateTaskDescription, updateTaskWithCustomFields } from './asana-task-update-description.js';
 
 export class IssueSync {
   constructor(asanaAPI, env) {
@@ -26,95 +25,43 @@ export class IssueSync {
     
     let result;
     
-    if (action === "opened") {
-      const taskContent = await issueToTask(payload, this.env);
-      const repository = payload.repository.name;
-      const creator = payload.issue.user.login;
-      const githubUrl = payload.issue.html_url;
-      
-      result = await createTask(
-        this.asanaAPI,
-        taskContent,
-        this.projectId,
-        repository,
-        creator,
-        githubUrl,
-        this.env,
-        'Issue',
-        taskContent.labels
-      );
-    } else if (action === "edited") {
-      const theTask = await findTaskContaining(this.asanaAPI, issueUrl, this.projectId, this.env);
-      
-      if (!theTask) {
-        // Task was deleted, recreate it
-        const taskContent = await issueToTask(payload, this.env);
-        const repository = payload.repository.name;
-        const creator = payload.issue.user.login;
-        const githubUrl = payload.issue.html_url;
-        
-        console.log('issue-sync taskContent.labels:', taskContent.labels);
-        console.log('issue-sync about to call createTask with labels:', taskContent.labels);
-        result = await createTask(
-          this.asanaAPI,
-          taskContent,
-          this.projectId,
-          repository,
-          creator,
-          githubUrl,
-          this.env,
-          'Issue',
-          taskContent.labels
-        );
-      } else {
-        const taskContent = await issueToTask(payload, this.env);
-        const repository = payload.repository.name;
-        const creator = payload.issue.user.login;
-        const githubUrl = payload.issue.html_url;
-        
-        result = await updateTaskWithCustomFields(
-          this.asanaAPI, 
-          theTask.gid, 
-          taskContent, 
-          repository, 
-          creator, 
-          githubUrl, 
-          this.env, 
-          'Issue', 
-          taskContent.labels
-        );
-      }
-    } else if (action === "closed" || action === "reopened") {
-      const theTask = await findTaskContaining(this.asanaAPI, issueUrl, this.projectId, this.env);
-      
-      if (!theTask) {
-        // Task was deleted, recreate it and then mark its status
-        const taskContent = await issueToTask(payload, this.env);
-        const repository = payload.repository.name;
-        const creator = payload.issue.user.login;
-        const githubUrl = payload.issue.html_url;
-        
-        const newTask = await createTask(
-          this.asanaAPI,
-          taskContent,
-          this.projectId,
-          repository,
-          creator,
-          githubUrl,
-          this.env,
-          'Issue',
-          taskContent.labels
-        );
-        
-        const completed = action === "closed";
-        result = await markTaskComplete(this.asanaAPI, completed, newTask.gid);
-      } else {
-        const completed = action === "closed";
-        result = await markTaskComplete(this.asanaAPI, completed, theTask.gid);
-      }
+    // Step 1: Ensure task exists with proper custom fields
+    const taskContent = await issueToTask(payload, this.env);
+    const repository = payload.repository.name;
+    const creator = payload.issue.user.login;
+    const githubUrl = payload.issue.html_url;
+    
+    const task = await ensureTaskExists(
+      this.asanaAPI,
+      this.projectId,
+      githubUrl,
+      repository,
+      creator,
+      this.env,
+      'Issue',
+      taskContent.labels,
+      taskContent.name
+    );
+    
+    // Step 2: Update task description with markdown content and image processing
+    await updateTaskDescription(
+      this.asanaAPI,
+      task.gid,
+      taskContent.markdownContent,
+      true // Enable image processing
+    );
+    
+    // Step 3: Handle completion status based on GitHub issue state
+    const githubState = payload.issue.state; // 'open' or 'closed'
+    const shouldBeCompleted = githubState === 'closed';
+    
+    if (action === "closed" || action === "reopened" || shouldBeCompleted !== undefined) {
+      result = await markTaskComplete(this.asanaAPI, shouldBeCompleted, task.gid);
+    } else {
+      result = task.permalink_url;
     }
     
-    return { status: 'processed', action, result };
+    return { status: 'processed', action, result, taskGid: task.gid };
   }
   
   async handleCommentEvent(payload) {
@@ -124,48 +71,33 @@ export class IssueSync {
       throw new Error("Unable to find GitHub issue URL");
     }
     
-    const theTask = await findTaskContaining(this.asanaAPI, issueUrl, this.projectId, this.env);
-    let result;
+    // Step 1: Ensure task exists with proper custom fields
+    const taskContent = await issueToTask(payload, this.env);
+    const repository = payload.repository.name;
+    const creator = payload.issue.user.login;
+    const githubUrl = payload.issue.html_url;
     
-    if (!theTask) {
-      // Task was deleted, recreate it with full conversation
-      const taskContent = await issueToTask(payload, this.env);
-      const repository = payload.repository.name;
-      const creator = payload.issue.user.login;
-      const githubUrl = payload.issue.html_url;
-      
-      result = await createTask(
-        this.asanaAPI,
-        taskContent,
-        this.projectId,
-        repository,
-        creator,
-        githubUrl,
-        this.env,
-        'Issue',
-        taskContent.labels
-      );
-    } else {
-      // Update task description to include the new comment
-      const taskContent = await issueToTask(payload, this.env);
-      const repository = payload.repository.name;
-      const creator = payload.issue.user.login;
-      const githubUrl = payload.issue.html_url;
-      
-      result = await updateTaskWithCustomFields(
-        this.asanaAPI, 
-        theTask.gid, 
-        taskContent, 
-        repository, 
-        creator, 
-        githubUrl, 
-        this.env, 
-        'Issue', 
-        taskContent.labels
-      );
-    }
+    const task = await ensureTaskExists(
+      this.asanaAPI,
+      this.projectId,
+      githubUrl,
+      repository,
+      creator,
+      this.env,
+      'Issue',
+      taskContent.labels,
+      taskContent.name
+    );
     
-    return { status: 'processed', action: 'comment_created', result };
+    // Step 2: Update task description to include the new comment
+    const result = await updateTaskDescription(
+      this.asanaAPI,
+      task.gid,
+      taskContent.markdownContent,
+      true // Enable image processing
+    );
+    
+    return { status: 'processed', action: 'comment_created', result, taskGid: task.gid };
   }
   
   async handlePullRequestEvent(payload) {
@@ -178,93 +110,43 @@ export class IssueSync {
     
     let result;
     
-    if (action === "opened") {
-      const taskContent = await issueToTask(payload, this.env, 'pull_request');
-      const repository = payload.repository.name;
-      const creator = payload.pull_request.user.login;
-      const githubUrl = payload.pull_request.html_url;
-      
-      result = await createTask(
-        this.asanaAPI,
-        taskContent,
-        this.projectId,
-        repository,
-        creator,
-        githubUrl,
-        this.env,
-        'PR',
-        taskContent.labels
-      );
-    } else if (action === "edited") {
-      const theTask = await findTaskContaining(this.asanaAPI, prUrl, this.projectId, this.env);
-      
-      if (!theTask) {
-        // Task was deleted, recreate it
-        const taskContent = await issueToTask(payload, this.env, 'pull_request');
-        const repository = payload.repository.name;
-        const creator = payload.pull_request.user.login;
-        const githubUrl = payload.pull_request.html_url;
-        
-        result = await createTask(
-          this.asanaAPI,
-          taskContent,
-          this.projectId,
-          repository,
-          creator,
-          githubUrl,
-          this.env,
-          'PR',
-          taskContent.labels
-        );
-      } else {
-        const taskContent = await issueToTask(payload, this.env, 'pull_request');
-        const repository = payload.repository.name;
-        const creator = payload.pull_request.user.login;
-        const githubUrl = payload.pull_request.html_url;
-        
-        result = await updateTaskWithCustomFields(
-          this.asanaAPI, 
-          theTask.gid, 
-          taskContent, 
-          repository, 
-          creator, 
-          githubUrl, 
-          this.env, 
-          'PR', 
-          taskContent.labels
-        );
-      }
-    } else if (action === "closed" || action === "reopened") {
-      const theTask = await findTaskContaining(this.asanaAPI, prUrl, this.projectId, this.env);
-      
-      if (!theTask) {
-        // Task was deleted, recreate it and then mark its status
-        const taskContent = await issueToTask(payload, this.env, 'pull_request');
-        const repository = payload.repository.name;
-        const creator = payload.pull_request.user.login;
-        const githubUrl = payload.pull_request.html_url;
-        
-        const newTask = await createTask(
-          this.asanaAPI,
-          taskContent,
-          this.projectId,
-          repository,
-          creator,
-          githubUrl,
-          this.env,
-          'PR',
-          taskContent.labels
-        );
-        
-        const completed = action === "closed";
-        result = await markTaskComplete(this.asanaAPI, completed, newTask.gid);
-      } else {
-        const completed = action === "closed";
-        result = await markTaskComplete(this.asanaAPI, completed, theTask.gid);
-      }
+    // Step 1: Ensure task exists with proper custom fields
+    const taskContent = await issueToTask(payload, this.env, 'pull_request');
+    const repository = payload.repository.name;
+    const creator = payload.pull_request.user.login;
+    const githubUrl = payload.pull_request.html_url;
+    
+    const task = await ensureTaskExists(
+      this.asanaAPI,
+      this.projectId,
+      githubUrl,
+      repository,
+      creator,
+      this.env,
+      'PR',
+      taskContent.labels,
+      taskContent.name
+    );
+    
+    // Step 2: Update task description with markdown content and image processing
+    await updateTaskDescription(
+      this.asanaAPI,
+      task.gid,
+      taskContent.markdownContent,
+      true // Enable image processing
+    );
+    
+    // Step 3: Handle completion status based on GitHub PR state
+    const githubState = payload.pull_request.state; // 'open' or 'closed'
+    const shouldBeCompleted = githubState === 'closed';
+    
+    if (action === "closed" || action === "reopened" || shouldBeCompleted !== undefined) {
+      result = await markTaskComplete(this.asanaAPI, shouldBeCompleted, task.gid);
+    } else {
+      result = task.permalink_url;
     }
     
-    return { status: 'processed', action, result };
+    return { status: 'processed', action, result, taskGid: task.gid };
   }
   
   async handlePullRequestCommentEvent(payload) {
@@ -274,47 +156,32 @@ export class IssueSync {
       throw new Error("Unable to find GitHub pull request URL");
     }
     
-    const theTask = await findTaskContaining(this.asanaAPI, prUrl, this.projectId, this.env);
-    let result;
+    // Step 1: Ensure task exists with proper custom fields
+    const taskContent = await issueToTask(payload, this.env, 'pull_request');
+    const repository = payload.repository.name;
+    const creator = payload.pull_request.user.login;
+    const githubUrl = payload.pull_request.html_url;
     
-    if (!theTask) {
-      // Task was deleted, recreate it with full conversation
-      const taskContent = await issueToTask(payload, this.env, 'pull_request');
-      const repository = payload.repository.name;
-      const creator = payload.pull_request.user.login;
-      const githubUrl = payload.pull_request.html_url;
-      
-      result = await createTask(
-        this.asanaAPI,
-        taskContent,
-        this.projectId,
-        repository,
-        creator,
-        githubUrl,
-        this.env,
-        'PR',
-        taskContent.labels
-      );
-    } else {
-      // Update task description to include the new comment
-      const taskContent = await issueToTask(payload, this.env, 'pull_request');
-      const repository = payload.repository.name;
-      const creator = payload.pull_request.user.login;
-      const githubUrl = payload.pull_request.html_url;
-      
-      result = await updateTaskWithCustomFields(
-        this.asanaAPI, 
-        theTask.gid, 
-        taskContent, 
-        repository, 
-        creator, 
-        githubUrl, 
-        this.env, 
-        'PR', 
-        taskContent.labels
-      );
-    }
+    const task = await ensureTaskExists(
+      this.asanaAPI,
+      this.projectId,
+      githubUrl,
+      repository,
+      creator,
+      this.env,
+      'PR',
+      taskContent.labels,
+      taskContent.name
+    );
     
-    return { status: 'processed', action: 'pr_comment_created', result };
+    // Step 2: Update task description to include the new comment
+    const result = await updateTaskDescription(
+      this.asanaAPI,
+      task.gid,
+      taskContent.markdownContent,
+      true // Enable image processing
+    );
+    
+    return { status: 'processed', action: 'pr_comment_created', result, taskGid: task.gid };
   }
 }

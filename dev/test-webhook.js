@@ -1,14 +1,34 @@
 // Test script for local development
 
-// Generate unique issue number based on timestamp
-const issueNumber = Math.floor(Date.now() / 1000); // Unix timestamp for uniqueness
+// Check for --id parameter
+const args = process.argv.slice(2);
+const idArgIndex = args.findIndex(arg => arg === '--id');
+const customId = idArgIndex !== -1 && args[idArgIndex + 1] ? args[idArgIndex + 1] : null;
+
+// Generate issue number - use custom ID if provided, otherwise timestamp
+const issueNumber = customId ? parseInt(customId) : Math.floor(Date.now() / 1000);
 const timestamp = new Date().toISOString();
+
+console.log(`🆔 Using issue/PR number: ${issueNumber}${customId ? ' (custom)' : ' (generated)'}`);
+console.log();
 
 const baseIssue = {
   html_url: `https://github.com/test/repo/issues/${issueNumber}`,
   title: `Test Issue #${issueNumber}`,
-  body: `This is a test issue created at ${timestamp}`,
+  body: `This is a test issue created at ${timestamp}
+
+<!-- This comment should be stripped out -->
+## Description
+
+This issue tests HTML comment handling.
+
+<!-- Another comment that should be removed -->
+- Item 1
+- Item 2
+
+<!-- Final comment -->`,
   number: issueNumber,
+  state: "open", // Will be modified for specific test cases
   user: { 
     login: "testuser",
     html_url: "https://github.com/testuser"
@@ -19,8 +39,50 @@ const baseIssue = {
 const basePullRequest = {
   html_url: `https://github.com/test/repo/pull/${issueNumber}`,
   title: `Test Pull Request #${issueNumber}`,
-  body: `This is a test pull request created at ${timestamp}`,
+  body: `This is a test pull request created at ${timestamp}
+
+## Testing Table Conversion
+
+Here's a test table to verify our table-to-preformatted conversion:
+
+| Feature | Before | After |
+|---------|--------|-------|
+| Tables  | ❌ XML Error | ✅ Works |
+| Images  | ![image](https://example.com/img.png) | Text only |
+| Links   | [GitHub](https://github.com) | Still works |
+
+## Testing Image Support
+
+Let's test image attachment processing:
+
+![GitHub Logo](https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png)
+
+another image:
+
+![Python Logo](https://www.python.org/static/community_logos/python-logo-master-v3-TM.png)
+
+testing
+
+## Test Checklist
+<!-- Go over all the following points, and put an \`x\` in all the boxes that apply. -->
+
+- [x] Basic functionality works
+- [x] Table conversion implemented  
+- [x] Error handling added
+- [x] Image processing added
+- [ ] Production deployment
+
+<!-- Add any other context, implementation notes, or design decisions -->
+This should test our table handling and image processing!
+
+## Types of changes
+<!-- What types of changes does your code introduce? Put an \`x\` in all the boxes that apply: -->
+- [ ] Bug fix (non-breaking change which fixes an issue)
+- [x] New feature (non-breaking change which adds functionality)  
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] Documentation update`,
   number: issueNumber,
+  state: "open", // Will be modified for specific test cases
   user: { 
     login: "testuser",
     html_url: "https://github.com/testuser"
@@ -29,7 +91,7 @@ const basePullRequest = {
 };
 
 const baseRepository = {
-  name: "test-repo",
+  name: "test",
   owner: { login: "test-owner" }
 };
 
@@ -37,6 +99,12 @@ const testPayloads = {
   issueOpened: {
     action: "opened",
     issue: baseIssue,
+    repository: baseRepository
+  },
+  
+  issueOpenedButClosed: {
+    action: "opened", // Simulating import of a closed issue
+    issue: { ...baseIssue, state: "closed" },
     repository: baseRepository
   },
   
@@ -52,7 +120,7 @@ const testPayloads = {
   
   issueClosed: {
     action: "closed",
-    issue: baseIssue,
+    issue: { ...baseIssue, state: "closed" },
     repository: baseRepository
   },
   
@@ -95,7 +163,7 @@ const testPayloads = {
   
   prClosed: {
     action: "closed",
-    pull_request: basePullRequest,
+    pull_request: { ...basePullRequest, state: "closed" },
     repository: baseRepository
   },
   
@@ -190,7 +258,14 @@ async function runAllTests() {
 }
 
 // Run individual test or all tests
-const testName = process.argv[2];
+// Filter out --id and its value from args to get the test name
+const filteredArgs = args.filter((arg, index) => {
+  if (arg === '--id') return false;
+  if (args[index - 1] === '--id') return false;
+  return true;
+});
+const testName = filteredArgs[0];
+
 if (testName && testPayloads[testName]) {
   let eventType = 'issues';
   if (testName === 'commentCreated') {

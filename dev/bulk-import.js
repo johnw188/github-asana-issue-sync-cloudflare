@@ -38,6 +38,54 @@ function loadEnvVars() {
   return env;
 }
 
+// Fetch specific items by number
+async function fetchSpecificItems(owner, repo, type, numbers, githubToken) {
+  const items = [];
+  
+  for (const number of numbers) {
+    try {
+      console.log(`Fetching ${type} #${number}...`);
+      
+      const url = `https://api.github.com/repos/${owner}/${repo}/${type}/${number}`;
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `token ${githubToken}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'github-asana-bulk-import'
+        }
+      });
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.log(`  ⚠️  ${type} #${number} not found`);
+          continue;
+        }
+        throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
+      }
+      
+      const item = await response.json();
+      
+      // Filter out PRs from issues endpoint (GitHub issues API includes PRs)
+      if (type === 'issues' && item.pull_request) {
+        console.log(`  ⚠️  #${number} is a pull request, skipping in issues mode`);
+        continue;
+      }
+      
+      items.push(item);
+      console.log(`  ✅ Found ${type} #${number}: ${item.title}`);
+      
+      // Rate limiting
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+    } catch (error) {
+      console.error(`  ❌ Error fetching ${type} #${number}: ${error.message}`);
+    }
+  }
+  
+  return items;
+}
+
 // Fetch all issues or PRs from GitHub with pagination
 async function fetchAllItems(owner, repo, type, state, githubToken) {
   const items = [];
@@ -144,7 +192,7 @@ async function processItem(item, type, issueSync, asanaAPI, projectId, env) {
     
   } catch (error) {
     console.error(`  ❌ Error processing ${type} #${item.number}: ${error.message}`);
-    return { error: error.message };
+    return { error: error.message, item: item };
   }
 }
 
@@ -159,12 +207,14 @@ Options:
   --issues-only    Import only issues (default: import both issues and PRs)
   --prs-only      Import only pull requests  
   --state=STATE   Filter by state: open, closed, all (default: all)
+  --numbers=N,N   Import only specific issue/PR numbers (comma-separated)
   --dry-run       Show what would be imported without creating tasks
 
 Examples:
   node dev/bulk-import.js johnw188/my-repo
   node dev/bulk-import.js johnw188/my-repo --issues-only --state=open
   node dev/bulk-import.js johnw188/my-repo --prs-only
+  node dev/bulk-import.js johnw188/my-repo --numbers=123,456,789
   node dev/bulk-import.js johnw188/my-repo --dry-run
 `);
     process.exit(0);
@@ -182,6 +232,8 @@ Examples:
   const prsOnly = args.includes('--prs-only');
   const stateArg = args.find(arg => arg.startsWith('--state='));
   const state = stateArg ? stateArg.split('=')[1] : 'all';
+  const numbersArg = args.find(arg => arg.startsWith('--numbers='));
+  const specificNumbers = numbersArg ? numbersArg.split('=')[1].split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n)) : null;
   const dryRun = args.includes('--dry-run');
   
   if (!['open', 'closed', 'all'].includes(state)) {
@@ -192,6 +244,7 @@ Examples:
   console.log(`🚀 Starting bulk import for ${repo}`);
   console.log(`   State: ${state}`);
   console.log(`   Types: ${issuesOnly ? 'issues only' : prsOnly ? 'PRs only' : 'issues and PRs'}`);
+  if (specificNumbers) console.log(`   Numbers: ${specificNumbers.join(', ')}`);
   console.log(`   Mode: ${dryRun ? 'dry run' : 'live import'}`);
   console.log('');
   
@@ -212,11 +265,18 @@ Examples:
     prs: { found: 0, created: 0, skipped: 0, errors: 0 }
   };
   
+  const failedItems = {
+    issues: [],
+    prs: []
+  };
+  
   try {
     // Import issues
     if (!prsOnly) {
       console.log('📋 Fetching issues...');
-      const issues = await fetchAllItems(owner, repoName, 'issues', state, env.GITHUB_TOKEN);
+      const issues = specificNumbers 
+        ? await fetchSpecificItems(owner, repoName, 'issues', specificNumbers, env.GITHUB_TOKEN)
+        : await fetchAllItems(owner, repoName, 'issues', state, env.GITHUB_TOKEN);
       results.issues.found = issues.length;
       
       if (issues.length > 0) {
@@ -232,7 +292,15 @@ Examples:
           
           if (result.created) results.issues.created++;
           else if (result.skipped) results.issues.skipped++;
-          else if (result.error) results.issues.errors++;
+          else if (result.error) {
+            results.issues.errors++;
+            failedItems.issues.push({
+              number: issue.number,
+              title: issue.title,
+              url: issue.html_url,
+              error: result.error
+            });
+          }
           
           // Rate limiting
           await new Promise(resolve => setTimeout(resolve, 200));
@@ -243,7 +311,9 @@ Examples:
     // Import PRs
     if (!issuesOnly) {
       console.log('\n🔄 Fetching pull requests...');
-      const prs = await fetchAllItems(owner, repoName, 'pulls', state, env.GITHUB_TOKEN);
+      const prs = specificNumbers 
+        ? await fetchSpecificItems(owner, repoName, 'pulls', specificNumbers, env.GITHUB_TOKEN)
+        : await fetchAllItems(owner, repoName, 'pulls', state, env.GITHUB_TOKEN);
       results.prs.found = prs.length;
       
       if (prs.length > 0) {
@@ -259,7 +329,15 @@ Examples:
           
           if (result.created) results.prs.created++;
           else if (result.skipped) results.prs.skipped++;
-          else if (result.error) results.prs.errors++;
+          else if (result.error) {
+            results.prs.errors++;
+            failedItems.prs.push({
+              number: pr.number,
+              title: pr.title,
+              url: pr.html_url,
+              error: result.error
+            });
+          }
           
           // Rate limiting
           await new Promise(resolve => setTimeout(resolve, 200));
@@ -283,6 +361,45 @@ Examples:
     
     if (totalErrors > 0) {
       console.log(`\n⚠️  ${totalErrors} items failed to import`);
+      
+      // Output failed items for easy rerunning
+      const allFailedItems = [...failedItems.issues, ...failedItems.prs];
+      if (allFailedItems.length > 0) {
+        console.log('\n📋 Failed Items (for easy retry):');
+        console.log('');
+        
+        // Group by error type for better organization
+        const errorGroups = {};
+        allFailedItems.forEach(item => {
+          const errorKey = item.error.substring(0, 100); // First 100 chars of error
+          if (!errorGroups[errorKey]) {
+            errorGroups[errorKey] = [];
+          }
+          errorGroups[errorKey].push(item);
+        });
+        
+        Object.entries(errorGroups).forEach(([errorType, items]) => {
+          console.log(`❌ Error: ${errorType}${errorType.length >= 100 ? '...' : ''}`);
+          items.forEach(item => {
+            console.log(`   - #${item.number}: ${item.title}`);
+            console.log(`     ${item.url}`);
+          });
+          console.log('');
+        });
+        
+        // Output as a simple list for scripts
+        console.log('📋 Failed Item Numbers (copy for selective retry):');
+        const failedNumbers = allFailedItems.map(item => `#${item.number}`).join(', ');
+        console.log(failedNumbers);
+        console.log('');
+        
+        // Output as URLs for manual checking
+        console.log('🔗 Failed Item URLs:');
+        allFailedItems.forEach(item => {
+          console.log(`${item.url}`);
+        });
+      }
+      
       process.exit(1);
     }
     

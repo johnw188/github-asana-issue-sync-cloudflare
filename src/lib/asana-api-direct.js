@@ -101,4 +101,72 @@ export class AsanaAPI {
     const result = await this.request('POST', endpoint, optData);
     return result.data;
   }
+
+  // Attachment methods
+  async createAttachment(attachmentData) {
+    const endpoint = '/attachments';
+    const result = await this.request('POST', endpoint, attachmentData);
+    return result.data;
+  }
+
+  async createFileAttachment(parentGid, fileBuffer, fileName, contentType) {
+    const url = `${this.baseUrl}/attachments`;
+    
+    // Create FormData for multipart upload
+    const formData = new FormData();
+    formData.append('parent', parentGid);
+    
+    // Create a Blob from the buffer and append as file
+    const blob = new Blob([fileBuffer], { type: contentType });
+    formData.append('file', blob, fileName);
+    
+    const options = {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Accept': 'application/json'
+        // Don't set Content-Type - let browser set it with boundary for multipart
+      },
+      body: formData
+    };
+
+    console.log(`Asana API POST /attachments (file upload: ${fileName})`);
+    const response = await fetch(url, options);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Asana API error: ${response.status} - ${errorText}`);
+      throw new Error(`Asana API error: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    return result.data;
+  }
+
+  async getAttachmentsForObject(parentGid, opts = {}) {
+    const params = new URLSearchParams();
+    params.append('parent', parentGid);
+    if (opts.opt_fields) params.append('opt_fields', opts.opt_fields);
+    
+    const endpoint = `/attachments?${params}`;
+    const result = await this.request('GET', endpoint);
+    return result;
+  }
+
+  // Story methods
+  async getStoriesForTask(taskGid, opts = {}) {
+    const params = new URLSearchParams();
+    params.append('parent', taskGid);
+    if (opts.opt_fields) params.append('opt_fields', opts.opt_fields);
+    
+    const endpoint = `/stories?${params}`;
+    const result = await this.request('GET', endpoint);
+    return result;
+  }
+
+  async deleteStory(storyGid) {
+    const endpoint = `/stories/${storyGid}`;
+    const result = await this.request('DELETE', endpoint);
+    return result;
+  }
 }
