@@ -1,15 +1,11 @@
 // Main Cloudflare Worker entry point
-import { AsanaAPI } from './lib/asana-api-direct.js';
-import { WebhookHandler } from './lib/webhook-handler.js';
+import { verifyWebhookSignature } from './lib/util/verify-signature.js';
+import { isSupportedEventType } from './lib/constants.js';
+
+export { IssueCoordinator } from './durable-objects/issue-coordinator.js';
 
 export default {
   async fetch(request, env, ctx) {
-    // Initialize Asana API client with environment variables
-    const asanaAPI = new AsanaAPI(env.ASANA_PAT);
-    
-    // Create webhook handler
-    const webhookHandler = new WebhookHandler(asanaAPI, env);
-    
     // Only handle POST requests
     if (request.method !== 'POST') {
       return new Response('Method not allowed', { status: 405 });
@@ -19,7 +15,8 @@ export default {
       // Skip signature verification in development (when running locally)
       const isLocalDev = request.url.includes('localhost') || request.url.includes('127.0.0.1');
       
-      // Verify webhook signature if secret is configured and not in local dev
+      // Parse the body and verify signature
+      let payload;
       if (env.WEBHOOK_SECRET && !isLocalDev) {
         const signature = request.headers.get('x-hub-signature-256');
         if (!signature) {
@@ -27,27 +24,50 @@ export default {
         }
         
         const body = await request.text();
-        const isValid = await webhookHandler.verifySignature(body, signature, env.WEBHOOK_SECRET);
+        
+        // Verify webhook signature
+        const isValid = await verifyWebhookSignature(body, signature, env.WEBHOOK_SECRET);
         if (!isValid) {
           return new Response('Invalid signature', { status: 401 });
         }
         
-        // Parse the body again since we consumed it
-        const payload = JSON.parse(body);
-        const result = await webhookHandler.handleWebhook(payload, request.headers);
-        
-        return new Response(JSON.stringify(result), {
-          headers: { 'Content-Type': 'application/json' }
-        });
+        payload = JSON.parse(body);
       } else {
         // No signature verification (local dev or no secret configured)
-        const payload = await request.json();
-        const result = await webhookHandler.handleWebhook(payload, request.headers);
-        
-        return new Response(JSON.stringify(result), {
-          headers: { 'Content-Type': 'application/json' }
-        });
+        payload = await request.json();
       }
+      
+      // Extract issue/PR URL to determine which Durable Object to use
+      const issueUrl = payload.issue?.html_url || payload.pull_request?.html_url;
+      if (!issueUrl) {
+        return new Response('No issue or PR URL found in webhook', { status: 400 });
+      }
+      
+      // Get the Durable Object ID based on the issue URL
+      const id = env.ISSUE_COORDINATOR.idFromName(issueUrl);
+      const durableObject = env.ISSUE_COORDINATOR.get(id);
+      
+      // Get the event type from GitHub
+      const eventType = request.headers.get('x-github-event');
+      
+      // Validate it's a supported event type
+      if (!isSupportedEventType(eventType)) {
+        return new Response(`Unsupported event type: ${eventType}`, { status: 400 });
+      }
+      
+      // Route the webhook to the Durable Object
+      const doRequest = new Request('https://internal/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventType,
+          payload,
+          headers: Object.fromEntries(request.headers.entries())
+        })
+      });
+      
+      const result = await durableObject.fetch(doRequest);
+      return result;
     } catch (error) {
       console.error('Error processing webhook:', error);
       return new Response(JSON.stringify({ 

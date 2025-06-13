@@ -6,6 +6,14 @@ logpush = true
 [observability]
 enabled = true
 
+[[durable_objects.bindings]]
+name = "ISSUE_COORDINATOR"
+class_name = "IssueCoordinator"
+
+[[migrations]]
+tag = "v1" # Update this tag when you need to reset Durable Object state
+new_classes = ["IssueCoordinator"]
+
 [env.production]
 routes = [
   { pattern = "issue-sync.ant-mcp.org", custom_domain = true }

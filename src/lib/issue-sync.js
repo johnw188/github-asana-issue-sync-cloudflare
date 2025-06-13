@@ -3,6 +3,7 @@ import { issueToTask } from './util/issue-to-task.js';
 import { ensureTaskExists } from './asana-task-ensure.js';
 import { updateTaskDescription } from './asana-task-update-description.js';
 import { markTaskComplete } from './asana-task-completed.js';
+import { GithubEventType } from './constants.js';
 
 export class IssueSync {
   constructor(asanaAPI, env) {
@@ -15,21 +16,21 @@ export class IssueSync {
     }
   }
   
-  async handleIssueEvent(payload) {
-    const { action } = payload;
-    const issueUrl = payload.issue?.html_url;
+  async handleEvent(eventType, payload) {
+    // Determine event type and extract common data
+    const isPullRequest = eventType === GithubEventType.PULL_REQUEST || eventType === GithubEventType.PULL_REQUEST_REVIEW_COMMENT;
+    const isComment = eventType === GithubEventType.ISSUE_COMMENT || eventType === GithubEventType.PULL_REQUEST_REVIEW_COMMENT;
+    const source = isPullRequest ? payload.pull_request : payload.issue;
+    const githubUrl = source?.html_url;
     
-    if (!issueUrl) {
-      throw new Error("Unable to find GitHub issue URL");
+    if (!githubUrl) {
+      throw new Error(`Unable to find GitHub ${isPullRequest ? 'pull request' : 'issue'} URL`);
     }
     
-    let result;
-    
     // Step 1: Ensure task exists with proper custom fields
-    const taskContent = await issueToTask(payload, this.env);
+    const taskContent = await issueToTask(payload, this.env, isPullRequest ? 'pull_request' : undefined);
     const repository = payload.repository.name;
-    const creator = payload.issue.user.login;
-    const githubUrl = payload.issue.html_url;
+    const creator = source.user.login;
     
     const task = await ensureTaskExists(
       this.asanaAPI,
@@ -38,9 +39,10 @@ export class IssueSync {
       repository,
       creator,
       this.env,
-      'Issue',
+      isPullRequest ? 'PR' : 'Issue',
       taskContent.labels,
-      taskContent.name
+      taskContent.name,
+      payload._cachedAsanaTaskGid // Pass cached GID if available
     );
     
     // Step 2: Update task description with markdown content and image processing
@@ -51,137 +53,40 @@ export class IssueSync {
       true // Enable image processing
     );
     
-    // Step 3: Handle completion status based on GitHub issue state
-    const githubState = payload.issue.state; // 'open' or 'closed'
-    const shouldBeCompleted = githubState === 'closed';
-    
-    if (action === "closed" || action === "reopened" || shouldBeCompleted !== undefined) {
-      result = await markTaskComplete(this.asanaAPI, shouldBeCompleted, task.gid);
-    } else {
-      result = task.permalink_url;
+    // Step 3: Handle completion status (only for non-comment events)
+    let result = task.permalink_url;
+    if (!isComment) {
+      const githubState = source.state; // 'open' or 'closed'
+      const shouldBeCompleted = githubState === 'closed';
+      const action = payload.action;
+      
+      if (action === "closed" || action === "reopened" || shouldBeCompleted !== undefined) {
+        result = await markTaskComplete(this.asanaAPI, shouldBeCompleted, task.gid);
+      }
     }
     
-    return { status: 'processed', action, result, taskGid: task.gid };
+    // Determine the action name for response
+    let actionName = payload.action || eventType;
+    if (isComment && payload.action === 'created') {
+      actionName = eventType === GithubEventType.PULL_REQUEST_REVIEW_COMMENT ? 'pr_comment_created' : 'comment_created';
+    }
+    
+    return { status: 'processed', action: actionName, result, taskGid: task.gid };
+  }
+  
+  async handleIssueEvent(payload) {
+    return this.handleEvent('issues', payload);
   }
   
   async handleCommentEvent(payload) {
-    const issueUrl = payload.issue?.html_url;
-    
-    if (!issueUrl) {
-      throw new Error("Unable to find GitHub issue URL");
-    }
-    
-    // Step 1: Ensure task exists with proper custom fields
-    const taskContent = await issueToTask(payload, this.env);
-    const repository = payload.repository.name;
-    const creator = payload.issue.user.login;
-    const githubUrl = payload.issue.html_url;
-    
-    const task = await ensureTaskExists(
-      this.asanaAPI,
-      this.projectId,
-      githubUrl,
-      repository,
-      creator,
-      this.env,
-      'Issue',
-      taskContent.labels,
-      taskContent.name
-    );
-    
-    // Step 2: Update task description to include the new comment
-    const result = await updateTaskDescription(
-      this.asanaAPI,
-      task.gid,
-      taskContent.markdownContent,
-      true // Enable image processing
-    );
-    
-    return { status: 'processed', action: 'comment_created', result, taskGid: task.gid };
+    return this.handleEvent('issue_comment', payload);
   }
   
   async handlePullRequestEvent(payload) {
-    const { action } = payload;
-    const prUrl = payload.pull_request?.html_url;
-    
-    if (!prUrl) {
-      throw new Error("Unable to find GitHub pull request URL");
-    }
-    
-    let result;
-    
-    // Step 1: Ensure task exists with proper custom fields
-    const taskContent = await issueToTask(payload, this.env, 'pull_request');
-    const repository = payload.repository.name;
-    const creator = payload.pull_request.user.login;
-    const githubUrl = payload.pull_request.html_url;
-    
-    const task = await ensureTaskExists(
-      this.asanaAPI,
-      this.projectId,
-      githubUrl,
-      repository,
-      creator,
-      this.env,
-      'PR',
-      taskContent.labels,
-      taskContent.name
-    );
-    
-    // Step 2: Update task description with markdown content and image processing
-    await updateTaskDescription(
-      this.asanaAPI,
-      task.gid,
-      taskContent.markdownContent,
-      true // Enable image processing
-    );
-    
-    // Step 3: Handle completion status based on GitHub PR state
-    const githubState = payload.pull_request.state; // 'open' or 'closed'
-    const shouldBeCompleted = githubState === 'closed';
-    
-    if (action === "closed" || action === "reopened" || shouldBeCompleted !== undefined) {
-      result = await markTaskComplete(this.asanaAPI, shouldBeCompleted, task.gid);
-    } else {
-      result = task.permalink_url;
-    }
-    
-    return { status: 'processed', action, result, taskGid: task.gid };
+    return this.handleEvent('pull_request', payload);
   }
   
   async handlePullRequestCommentEvent(payload) {
-    const prUrl = payload.pull_request?.html_url;
-    
-    if (!prUrl) {
-      throw new Error("Unable to find GitHub pull request URL");
-    }
-    
-    // Step 1: Ensure task exists with proper custom fields
-    const taskContent = await issueToTask(payload, this.env, 'pull_request');
-    const repository = payload.repository.name;
-    const creator = payload.pull_request.user.login;
-    const githubUrl = payload.pull_request.html_url;
-    
-    const task = await ensureTaskExists(
-      this.asanaAPI,
-      this.projectId,
-      githubUrl,
-      repository,
-      creator,
-      this.env,
-      'PR',
-      taskContent.labels,
-      taskContent.name
-    );
-    
-    // Step 2: Update task description to include the new comment
-    const result = await updateTaskDescription(
-      this.asanaAPI,
-      task.gid,
-      taskContent.markdownContent,
-      true // Enable image processing
-    );
-    
-    return { status: 'processed', action: 'pr_comment_created', result, taskGid: task.gid };
+    return this.handleEvent('pull_request_comment', payload);
   }
 }

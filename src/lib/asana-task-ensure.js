@@ -17,16 +17,32 @@ import { getCustomFieldForProject, getMultiEnumOptionsForField } from "./util/cu
  * @param {string} taskName - Name for the task
  * @returns {Promise<Object>} Asana task object with gid
  */
-export async function ensureTaskExists(asanaAPI, projectId, githubUrl, repository, creator, env, type = 'Issue', labels = [], taskName = '') {
+export async function ensureTaskExists(asanaAPI, projectId, githubUrl, repository, creator, env, type = 'Issue', labels = [], taskName = '', cachedTaskGid = null) {
   try {
     console.log(`🔍 Ensuring task exists for: ${githubUrl}`);
     
-    // First, try to find existing task by GitHub URL
-    const existingTask = await findTaskByGithubUrl(asanaAPI, projectId, githubUrl, env);
+    let existingTask = null;
     
+    // If we have a cached task GID, verify it still exists
+    if (cachedTaskGid) {
+      existingTask = await verifyTaskExists(asanaAPI, cachedTaskGid);
+      if (existingTask) {
+        console.log(`✅ Using verified cached task: ${cachedTaskGid}`);
+      } else {
+        console.log(`⚠️  Cached task no longer exists: ${cachedTaskGid}`);
+      }
+    }
+    
+    // If no cached task or it no longer exists, try to find by GitHub URL
+    if (!existingTask) {
+      existingTask = await findTaskByGithubUrl(asanaAPI, projectId, githubUrl, env);
+      if (existingTask) {
+        console.log(`✅ Found existing task by GitHub URL: ${existingTask.gid}`);
+      }
+    }
+    
+    // If we have an existing task, update its custom fields
     if (existingTask) {
-      console.log(`✅ Found existing task: ${existingTask.gid}`);
-      // Update custom fields on existing task
       await updateTaskCustomFields(asanaAPI, existingTask.gid, repository, creator, githubUrl, env, type, labels);
       return existingTask;
     }
@@ -42,6 +58,31 @@ export async function ensureTaskExists(asanaAPI, projectId, githubUrl, repositor
     console.error('❌ Error ensuring task exists:', error.message);
     throw error;
   }
+}
+
+/**
+ * Verify that a task still exists in Asana
+ * @param {Object} asanaAPI - Asana API client
+ * @param {string} taskGid - Task GID to verify
+ * @returns {Promise<Object|null>} Task object if exists, null otherwise
+ */
+async function verifyTaskExists(asanaAPI, taskGid) {
+  try {
+    console.log(`🔍 Verifying task exists: ${taskGid}`);
+    const task = await asanaAPI.getTask(taskGid, {
+      opt_fields: 'gid,name'
+    });
+    
+    if (task && task.gid) {
+      console.log(`✅ Task verified: ${task.name}`);
+      return { gid: task.gid, name: task.name };
+    }
+  } catch (error) {
+    // Task doesn't exist or API error
+    console.log(`⚠️  Task verification failed: ${error.message}`);
+  }
+  
+  return null;
 }
 
 /**
