@@ -20,11 +20,26 @@ const baseIssue = {
 <!-- This comment should be stripped out -->
 ## Description
 
-This issue tests HTML comment handling.
+This issue tests HTML comment handling and nested blockquotes.
 
 <!-- Another comment that should be removed -->
 - Item 1
 - Item 2
+
+### Nested Blockquote Test
+
+Here's a discussion with nested quotes:
+
+> This is a quoted comment
+>
+> > This is a nested quote that contains a really long line that would normally wrap in GitHub's interface and potentially cause issues with word breaks
+
+And another example:
+
+> Would you be interested in drafting a proposal PR?
+> > I'd love to.
+> > 
+> > However, this would be a somehow ambitious PR, with quite a few design choices to be made beforehand.
 
 <!-- Final comment -->`,
   number: issueNumber,

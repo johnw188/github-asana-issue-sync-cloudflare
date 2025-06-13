@@ -58,7 +58,7 @@ export async function issueToTask(payload, env, type = 'issue') {
           const comments = await response.json();
           
           if (comments.length > 0) {
-            conversationText += `<hr><h2>Comments</h2>\n\n`;
+            conversationText += `\n\n<hr><h2>Comments</h2>\n\n`;
             
             for (const comment of comments) {
               const username = comment.user?.login || 'ghost';
