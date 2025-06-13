@@ -49,6 +49,23 @@ export async function updateTaskDescription(asanaAPI, taskGid, markdownContent, 
       console.error('🔄 CONVERTED HTML CONTENT:');
       console.error(html_notes || 'No HTML content generated');
       console.error('='.repeat(80));
+      
+      // Fallback: Try updating with plain text notes instead of HTML
+      console.log('⚠️  Falling back to plain text notes due to XML parsing error...');
+      try {
+        const fallbackData = {
+          data: {
+            notes: markdownContent
+          }
+        };
+        
+        const fallbackResult = await asanaAPI.updateTask(taskGid, fallbackData);
+        console.log(`✅ Updated task description using plain text fallback: ${taskGid}`);
+        return fallbackResult.permalink_url;
+      } catch (fallbackError) {
+        console.error('❌ Fallback to plain text also failed:', fallbackError.message);
+        throw fallbackError;
+      }
     }
     
     throw error;
@@ -146,6 +163,31 @@ export async function updateTaskWithCustomFields(asanaAPI, task_gid, content, re
       }
       console.error('='.repeat(80));
       console.error('Full update data:', JSON.stringify(updateData, null, 2));
+      
+      // Fallback: Try updating with plain text notes instead of HTML
+      if (content.html_notes) {
+        console.log('⚠️  Falling back to plain text notes due to XML parsing error...');
+        try {
+          // Replace html_notes with notes in the content
+          const fallbackContent = { ...content };
+          delete fallbackContent.html_notes;
+          fallbackContent.notes = content.notes || 'No content available';
+          
+          const fallbackData = {
+            data: {
+              ...fallbackContent,
+              ...(Object.keys(customFields).length > 0 ? { custom_fields: customFields } : {})
+            }
+          };
+          
+          const fallbackResult = await asanaAPI.updateTask(task_gid, fallbackData);
+          console.log(`✅ Updated task using plain text fallback: ${task_gid}`);
+          return fallbackResult.permalink_url;
+        } catch (fallbackError) {
+          console.error('❌ Fallback to plain text also failed:', fallbackError.message);
+          throw fallbackError;
+        }
+      }
     }
     
     throw error;
