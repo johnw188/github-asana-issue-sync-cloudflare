@@ -5,6 +5,56 @@ import { gfm, gfmHtml } from "micromark-extension-gfm";
 import { processImagesInHtml } from "./asana-attachment-helper.js";
 
 /**
+ * Process nested blockquotes by replacing inner blockquotes with > symbols
+ * @param {string} html - HTML content with potentially nested blockquotes
+ * @returns {string} - HTML with flattened blockquotes
+ */
+function flattenNestedBlockquotes(html) {
+  // Count the depth of nesting for each blockquote
+  let depth = 0;
+  let result = '';
+  let i = 0;
+  
+  while (i < html.length) {
+    // Check for blockquote opening tag
+    if (html.substring(i).startsWith('<blockquote>')) {
+      if (depth > 0) {
+        // This is a nested blockquote - replace with > symbols
+        result += '\n' + '&gt; '.repeat(depth);
+      } else {
+        // This is a top-level blockquote - keep the tag
+        result += '<blockquote>';
+      }
+      depth++;
+      i += '<blockquote>'.length;
+    }
+    // Check for blockquote closing tag
+    else if (html.substring(i).startsWith('</blockquote>')) {
+      depth--;
+      if (depth > 0) {
+        // This was a nested blockquote - just add a newline
+        result += '\n' + '&gt; '.repeat(depth - 1);
+      } else {
+        // This is a top-level blockquote - keep the closing tag
+        result += '</blockquote>';
+      }
+      i += '</blockquote>'.length;
+    }
+    // Regular content
+    else {
+      // If we're inside nested blockquotes, add the > prefix at the start of each line
+      if (depth > 1 && (i === 0 || html[i - 1] === '\n')) {
+        result += '&gt; '.repeat(depth - 1);
+      }
+      result += html[i];
+      i++;
+    }
+  }
+  
+  return result;
+}
+
+/**
  * Convert HTML table to properly aligned monospaced text
  * @param {string} tableHtml - HTML table string
  * @returns {string} - Formatted monospaced text
@@ -121,8 +171,11 @@ export async function renderMarkdown(rawMd, options = {}) {
     .replace(/<!--[\s\S]*?-->/g, '')
     .trim();
 
+  // Flatten nested blockquotes
+  const flattened = flattenNestedBlockquotes(cleaned);
+
   // Final cleanup pass
-  let final = `<body>${cleaned}</body>`
+  let final = `<body>${flattened}</body>`
     // Remove newlines after <hr> tags
     .replace(/<hr>\n+/g, '<hr>');
 
