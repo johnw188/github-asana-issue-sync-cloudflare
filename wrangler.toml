@@ -6,6 +6,7 @@ logpush = true
 [observability]
 enabled = true
 
+# Base configuration for local development
 [[durable_objects.bindings]]
 name = "ISSUE_COORDINATOR"
 class_name = "IssueCoordinator"
@@ -20,6 +21,14 @@ routes = [
 ]
 vars = {}
 
+[[env.production.durable_objects.bindings]]
+name = "ISSUE_COORDINATOR"
+class_name = "IssueCoordinator"
+
+[[env.production.migrations]]
+tag = "v1" # Update this tag when you need to reset Durable Object state
+new_classes = ["IssueCoordinator"]
+
 [env.production.secrets]
 # Set these in Cloudflare dashboard or with wrangler secret put
 # ASANA_PAT = "your_asana_personal_access_token"
@@ -27,5 +36,6 @@ vars = {}
 # REPOSITORY_FIELD_ID = "optional_custom_field_id_for_repository"
 # CREATOR_FIELD_ID = "optional_custom_field_id_for_creator"
 # GITHUB_URL_FIELD_ID = "optional_custom_field_id_for_github_url"
+# MERGE_STATUS_FIELD_ID = "optional_custom_field_id_for_merge_status"
 # GITHUB_TOKEN = "optional_github_token_for_api_calls"
 # WEBHOOK_SECRET = "github_webhook_secret_for_verification"

@@ -32,6 +32,16 @@ export class IssueSync {
     const repository = payload.repository.name;
     const creator = source.user.login;
     
+    // Determine merge status for PRs
+    let mergeStatus = null;
+    if (isPullRequest) {
+      if (source.state === 'open') {
+        mergeStatus = 'open';
+      } else if (source.state === 'closed') {
+        mergeStatus = source.merged ? 'merged' : 'unmerged';
+      }
+    }
+    
     const task = await ensureTaskExists(
       this.asanaAPI,
       this.projectId,
@@ -42,7 +52,8 @@ export class IssueSync {
       isPullRequest ? 'PR' : 'Issue',
       taskContent.labels,
       taskContent.name,
-      payload._cachedAsanaTaskGid // Pass cached GID if available
+      payload._cachedAsanaTaskGid, // Pass cached GID if available
+      mergeStatus
     );
     
     // Step 2: Update task description with markdown content and image processing

@@ -15,9 +15,11 @@ import { getCustomFieldForProject, getMultiEnumOptionsForField } from "./util/cu
  * @param {string} type - Issue type ('Issue' or 'Pull Request')
  * @param {Array} labels - GitHub labels array
  * @param {string} taskName - Name for the task
+ * @param {string} cachedTaskGid - Cached task GID from Durable Object
+ * @param {string} mergeStatus - Merge status for PRs: "open", "merged", or "unmerged"
  * @returns {Promise<Object>} Asana task object with gid
  */
-export async function ensureTaskExists(asanaAPI, projectId, githubUrl, repository, creator, env, type = 'Issue', labels = [], taskName = '', cachedTaskGid = null) {
+export async function ensureTaskExists(asanaAPI, projectId, githubUrl, repository, creator, env, type = 'Issue', labels = [], taskName = '', cachedTaskGid = null, mergeStatus = null) {
   try {
     console.log(`🔍 Ensuring task exists for: ${githubUrl}`);
     
@@ -43,13 +45,13 @@ export async function ensureTaskExists(asanaAPI, projectId, githubUrl, repositor
     
     // If we have an existing task, update its custom fields
     if (existingTask) {
-      await updateTaskCustomFields(asanaAPI, existingTask.gid, repository, creator, githubUrl, env, type, labels);
+      await updateTaskCustomFields(asanaAPI, existingTask.gid, repository, creator, githubUrl, env, type, labels, mergeStatus);
       return existingTask;
     }
     
     // Create new task if not found
     console.log(`📝 Creating new task: ${taskName}`);
-    const newTask = await createTaskWithCustomFields(asanaAPI, projectId, repository, creator, githubUrl, env, type, labels, taskName);
+    const newTask = await createTaskWithCustomFields(asanaAPI, projectId, repository, creator, githubUrl, env, type, labels, taskName, mergeStatus);
     console.log(`✅ Created new task: ${newTask.gid}`);
     
     return newTask;
@@ -145,10 +147,11 @@ async function findTaskByGithubUrl(asanaAPI, projectId, githubUrl, env) {
  * @param {string} type - Issue type
  * @param {Array} labels - GitHub labels
  * @param {string} taskName - Task name
+ * @param {string} mergeStatus - Merge status for PRs, either "merged" or "unmerged"
  * @returns {Promise<Object>} Created task object
  */
-async function createTaskWithCustomFields(asanaAPI, projectId, repository, creator, githubUrl, env, type, labels, taskName) {
-  const customFields = await buildCustomFields(repository, creator, githubUrl, env, type, labels, asanaAPI);
+async function createTaskWithCustomFields(asanaAPI, projectId, repository, creator, githubUrl, env, type, labels, taskName, mergeStatus) {
+  const customFields = await buildCustomFields(repository, creator, githubUrl, env, type, labels, asanaAPI, mergeStatus);
   
   const taskData = {
     data: {
@@ -177,13 +180,14 @@ async function createTaskWithCustomFields(asanaAPI, projectId, repository, creat
  * @param {Object} env - Environment variables
  * @param {string} type - Issue type
  * @param {Array} labels - GitHub labels
+ * @param {string} mergeStatus - Merge status for PRs, either "merged" or "unmerged"
  * @returns {Promise<void>}
  */
-async function updateTaskCustomFields(asanaAPI, taskGid, repository, creator, githubUrl, env, type, labels) {
+async function updateTaskCustomFields(asanaAPI, taskGid, repository, creator, githubUrl, env, type, labels, mergeStatus) {
   try {
     console.log(`🔧 Updating custom fields for task: ${taskGid}`);
     
-    const customFields = await buildCustomFields(repository, creator, githubUrl, env, type, labels, asanaAPI);
+    const customFields = await buildCustomFields(repository, creator, githubUrl, env, type, labels, asanaAPI, mergeStatus);
     
     if (Object.keys(customFields).length > 0) {
       const updateData = {
@@ -213,14 +217,16 @@ async function updateTaskCustomFields(asanaAPI, taskGid, repository, creator, gi
  * @param {string} type - Issue type
  * @param {Array} labels - GitHub labels
  * @param {Object} asanaAPI - Asana API client
+ * @param {string} mergeStatus - Merge status for PRs, either "merged" or "unmerged"
  * @returns {Promise<Object>} Custom fields object
  */
-async function buildCustomFields(repository, creator, githubUrl, env, type, labels, asanaAPI) {
+async function buildCustomFields(repository, creator, githubUrl, env, type, labels, asanaAPI, mergeStatus) {
   const repositoryFieldGid = env.REPOSITORY_FIELD_ID;
   const creatorFieldGid = env.CREATOR_FIELD_ID;
   const githubUrlFieldGid = env.GITHUB_URL_FIELD_ID;
   const issueTypeFieldGid = env.ISSUE_TYPE_FIELD_ID;
   const labelsFieldGid = env.LABELS_FIELD_ID;
+  const mergeStatusFieldGid = env.MERGE_STATUS_FIELD_ID;
   
   let customFields = {};
   
@@ -274,6 +280,19 @@ async function buildCustomFields(repository, creator, githubUrl, env, type, labe
       }
     } catch (error) {
       console.error('❌ Error with labels custom field:', error.message);
+    }
+  }
+  
+  // Add Merge Status field if configured and this is a PR
+  if (mergeStatusFieldGid && mergeStatus && type === 'PR') {
+    try {
+      const optionGid = await getCustomFieldForProject(asanaAPI, mergeStatusFieldGid, mergeStatus);
+      if (optionGid) {
+        customFields[mergeStatusFieldGid] = optionGid;
+        console.log(`✅ Set merge status field: ${mergeStatus}`);
+      }
+    } catch (error) {
+      console.error('❌ Error with merge status custom field:', error.message);
     }
   }
   
